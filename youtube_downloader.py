@@ -36,12 +36,46 @@ def my_hook(d):
     elif d['status'] == 'finished':
         print("\n下載完成，正在處理...", file=sys.stderr)
 
-def download_video_segment(url, start_time, duration, output_path, part_num, total_parts):
+def get_available_formats(url):
+    """獲取影片可用的畫質選項"""
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+            formats = []
+            seen_qualities = set()
+            
+            # 過濾並整理格式列表
+            for f in info['formats']:
+                if 'height' in f and f['height'] is not None:
+                    quality = f'{f["height"]}p'
+                    if quality not in seen_qualities and f.get('vcodec') != 'none':
+                        formats.append({
+                            'format_id': f['format_id'],
+                            'ext': f['ext'],
+                            'quality': quality,
+                            'filesize': f.get('filesize', 0),
+                            'vcodec': f.get('vcodec', 'unknown')
+                        })
+                        seen_qualities.add(quality)
+            
+            # 按畫質排序
+            formats.sort(key=lambda x: int(x['quality'][:-1]), reverse=True)
+            return formats
+        except Exception as e:
+            print(f"獲取影片格式失敗: {str(e)}")
+            return []
+
+def download_video_segment(url, start_time, duration, output_path, part_num, total_parts, format_id=None):
     """下載影片的指定片段"""
     output_template = str(output_path / f'%(title)s_part{part_num}.%(ext)s')
     
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',  # 直接下載最佳的合併格式
+        'format': format_id if format_id else 'best[ext=mp4]/best',  # 使用指定的格式ID或最佳品質
         'outtmpl': output_template,
         'quiet': False,
         'no_warnings': True,
@@ -64,7 +98,7 @@ def download_video_segment(url, start_time, duration, output_path, part_num, tot
         'hls_prefer_ffmpeg': True,
         'prefer_ffmpeg': True,
         'postprocessor_args': {
-            'ffmpeg': ['-c:v', 'copy', '-c:a', 'copy']  # 直接複製音視頻流
+            'ffmpeg': ['-c:v', 'copy', '-c:a', 'copy']
         }
     }
 
@@ -87,30 +121,45 @@ def download_video_segment(url, start_time, duration, output_path, part_num, tot
             print("這是一個需要登入的影片，請確保你已登入並有權限觀看")
         return False
 
-def download_video(url, output_path=None, segment_duration=1800):  
+def download_video(url, output_path=None, segment_duration=1800):
     try:
         # 如果沒有指定輸出路徑，則使用當前目錄下的 downloads 資料夾
         if output_path is None:
             output_path = Path.cwd() / 'downloads'
             output_path.mkdir(exist_ok=True)
 
-        # 先獲取影片資訊
-        print("正在獲取影片資訊...")
-        with yt_dlp.YoutubeDL({
-            'quiet': True,
-            'no_warnings': True,
-            'ignoreerrors': True
-        }) as ydl:
-            try:
-                info = ydl.extract_info(url, download=False)
-            except Exception as e:
-                if "This video is only available for registered users" in str(e):
-                    print("這是一個需要登入的影片，請確保你已登入並有權限觀看")
-                    return
-                raise e
+        # 獲取可用的畫質選項
+        print("正在獲取影片資訊和可用畫質...")
+        formats = get_available_formats(url)
+        if not formats:
+            print("無法獲取影片格式，將使用預設最佳畫質")
+            format_id = None
+        else:
+            print("\n可用的畫質選項：")
+            for i, fmt in enumerate(formats, 1):
+                size_mb = fmt['filesize'] / (1024 * 1024) if fmt['filesize'] > 0 else 0
+                print(f"{i}. {fmt['quality']} ({fmt['ext']}) - {size_mb:.1f}MB")
             
-        total_duration = info['duration']
-        title = info['title']
+            while True:
+                try:
+                    choice = input("\n請選擇畫質 (輸入數字，直接按Enter使用最佳畫質): ").strip()
+                    if not choice:  # 使用預設最佳畫質
+                        format_id = None
+                        break
+                    choice = int(choice)
+                    if 1 <= choice <= len(formats):
+                        format_id = formats[choice-1]['format_id']
+                        break
+                    else:
+                        print("無效的選擇，請重試")
+                except ValueError:
+                    print("請輸入有效的數字")
+
+        # 獲取影片資訊
+        with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            title = info['title']
+            total_duration = info.get('duration', 0)
         
         print(f"\n影片標題: {title}")
         print(f"總時長: {format_time(total_duration)}")
@@ -120,7 +169,7 @@ def download_video(url, output_path=None, segment_duration=1800):
         # 如果影片時長小於分段時長，直接下載完整影片
         if total_duration <= segment_duration:
             print("\n影片時長較短，將直接下載完整影片")
-            return download_video_segment(url, 0, total_duration, output_path, 1, 1)
+            return download_video_segment(url, 0, total_duration, output_path, 1, 1, format_id)
 
         # 計算需要分成幾段
         num_segments = math.ceil(total_duration / segment_duration)
@@ -134,7 +183,7 @@ def download_video(url, output_path=None, segment_duration=1800):
             
             print(f"\n正在處理第 {i+1}/{num_segments} 段")
             
-            if download_video_segment(url, start_time, duration, output_path, i+1, num_segments):
+            if download_video_segment(url, start_time, duration, output_path, i+1, num_segments, format_id):
                 successful_parts.append(i+1)
             else:
                 print(f"第 {i+1} 段下載失敗")
