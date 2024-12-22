@@ -1,61 +1,68 @@
-# YouTube Video Downloader
+# YouTube 影片下載工具
 
-A Python-based YouTube video downloader that allows you to download complete videos or specific segments from YouTube. This tool supports progress tracking and automatic segmentation of long videos.
+這是一個基於 Python 的 YouTube 影片下載工具，可以讓你下載完整的 YouTube 影片或特定片段。本工具支援下載進度追蹤，並且能夠自動將較長的影片分段下載。
 
-## Features
+## 功能特點
 
-- Download complete YouTube videos
-- Download specific segments of videos by specifying start time and duration
-- Automatic segmentation of long videos into smaller parts
-- Progress tracking with download status
-- Time formatting in HH:MM:SS format
-- Customizable output path
+- 下載完整的 YouTube 影片
+- 支援下載影片的特定片段（可指定開始時間和持續時間）
+- 自動將較長影片分割成較小的部分
+- 即時顯示下載進度和速度
+- 支援多種影片畫質選擇
+- 支援時間格式：HH:MM:SS（時:分:秒）
+- 可自訂下載路徑
+- 自動合併影片和音訊
+- 智能檔案命名和清理
+- 支援斷點續傳
 
-## Requirements
+## 系統需求
 
 - Python 3.x
 - yt-dlp
 
-## Installation
+## 安裝方式
 
-1. Clone this repository:
+1. 複製此專案：
 ```bash
 git clone [your-repository-url]
 ```
 
-2. Install the required packages:
+2. 安裝必要套件：
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## 使用方法
 
-Run the script using Python:
+執行 Python 腳本：
 
 ```bash
 python youtube_downloader.py
 ```
 
-The program will prompt you to:
-1. Enter the YouTube video URL
-2. Choose whether to download the entire video or a specific segment
-3. Specify the output path (optional)
+程式會引導你：
+1. 輸入 YouTube 影片網址
+2. 選擇要下載的影片畫質
+3. 選擇是否要下載完整影片或特定片段
+4. 指定輸出路徑（選擇性）
 
-### For Segment Downloads
-If you choose to download a specific segment, you'll need to provide:
-- Start time (in HH:MM:SS format)
-- Duration (in seconds)
+### 下載特定片段
+如果選擇下載特定片段，你需要提供：
+- 開始時間（格式：HH:MM:SS）
+- 持續時間（以秒為單位）
 
-## Notes
+## 注意事項
 
-- Videos longer than 30 minutes will be automatically split into multiple parts
-- Downloads are saved in a 'downloads' folder by default
-- Progress is displayed during download
+- 超過 30 分鐘的影片會自動分割成多個部分
+- 預設將檔案儲存在 'downloads' 資料夾
+- 下載過程中會顯示進度和下載速度
+- 支援自動清理未完成的下載檔案
+- 下載完成後會自動進行影片和音訊的合併
 
-## License
+## 授權條款
 
-This project is open source and available under the MIT License.
+本專案採用 MIT 授權條款。
 
-## Contributing
+## 參與貢獻
 
-Feel free to fork this repository and submit pull requests for any improvements.
+歡迎 fork 此專案並提交 pull requests 來改善功能。
