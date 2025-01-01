@@ -234,30 +234,56 @@ def find_downloaded_files(output_path, base_filename):
     return video_file, audio_file
 
 def download_video(url, output_path=None):
-    """下載完整YouTube視頻"""
+    """下載YouTube視頻或音頻"""
     if output_path is None:
         output_path = os.path.join(os.getcwd(), 'downloads')
     
     # 確保輸出目錄存在
     os.makedirs(output_path, exist_ok=True)
     
-    # 基本下載選項
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-        'progress_hooks': [my_hook],
-        'merge_output_format': 'mp4',
-        'postprocessor_hooks': [lambda d: print(f"\n處理進度: {d['status']}")],
-        'quiet': False,
-        'no_warnings': True
-    }
-    
     try:
         # 獲取視頻信息
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
             info = ydl.extract_info(url, download=False)
-            formats = get_available_formats(url)
             
+        print("\n請選擇下載格式：")
+        print("1. 一般版 (MP4 + 音頻)")
+        print("2. 純音樂 (MP3)")
+        
+        while True:
+            format_choice = input("\n請選擇格式 (1-2): ").strip()
+            if format_choice in ['1', '2']:
+                break
+            print("請輸入有效的選項 (1-2)")
+        
+        # 基本下載選項
+        ydl_opts = {
+            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+            'progress_hooks': [my_hook],
+            'quiet': False,
+            'no_warnings': True
+        }
+        
+        if format_choice == '2':  # 純音樂 MP3
+            print("\n正在下載 MP3 音頻...")
+            ydl_opts.update({
+                'format': 'bestaudio/best',
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            })
+            
+            print(f"\n影片標題: {info.get('title', 'Unknown')}")
+            print(f"總時長: {format_time(info.get('duration', 0))}")
+            print(f"觀看次數: {info.get('view_count', 0)}\n")
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+                
+        else:  # 一般版 MP4
+            formats = get_available_formats(url)
             print("\n可用的畫質選項：")
             for i, fmt in enumerate(formats, 1):
                 print(f"{i}. {fmt['quality']} ({fmt['ext']}) - {fmt['filesize_str']}")
@@ -266,21 +292,44 @@ def download_video(url, output_path=None):
             
             if choice and choice.isdigit() and 1 <= int(choice) <= len(formats):
                 selected_format = formats[int(choice)-1]
-                ydl_opts['format'] = f'bestvideo[height={selected_format["height"]}]+bestaudio/best[height={selected_format["height"]}]'
+                height = selected_format["height"]
+            else:
+                height = None
+            
+            # 更新下載選項，確保音頻也被下載
+            ydl_opts.update({
+                'format': f'bestvideo[height={height}]+bestaudio/best' if height else 'bestvideo+bestaudio/best',
+                'merge_output_format': 'mp4',
+                'postprocessors': [{
+                    'key': 'FFmpegVideoRemuxer',
+                    'preferedformat': 'mp4',
+                }],
+                # 添加 FFmpeg 參數以確保音頻被正確合併
+                'postprocessor_args': [
+                    '-c:v', 'copy',
+                    '-c:a', 'aac',
+                    '-strict', 'experimental'
+                ]
+            })
             
             print(f"\n影片標題: {info.get('title', 'Unknown')}")
             print(f"總時長: {format_time(info.get('duration', 0))}")
             print(f"觀看次數: {info.get('view_count', 0)}\n")
             
-            print("開始下載完整視頻...")
-            ydl.download([url])
-            print("\n下載完成！")
-            
+            print("開始下載視頻...")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+        
+        print("\n下載完成！")
+        return True
+        
     except Exception as e:
         print(f"\n下載過程中出現錯誤: {str(e)}")
+        if "HTTP Error 429" in str(e):
+            print("YouTube 暫時限制了下載請求，請稍後再試")
+        elif "This video is not available" in str(e):
+            print("此影片可能有版權限制或地區限制")
         return False
-    
-    return True
 
 def check_video_info(video_file):
     """檢查視頻文件的信息"""
