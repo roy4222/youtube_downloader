@@ -11,6 +11,21 @@ from tkinter import ttk, filedialog, messagebox
 from threading import Thread
 import datetime
 
+# 設定 ffmpeg 路徑
+def get_ffmpeg_path():
+    if getattr(sys, 'frozen', False):
+        # 如果是打包後的執行檔
+        base_path = sys._MEIPASS
+    else:
+        # 如果是直接執行 Python 腳本
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    ffmpeg_path = os.path.join(base_path, 'ffmpeg.exe')
+    return ffmpeg_path
+
+# 設定 ffmpeg 路徑
+os.environ["PATH"] = os.path.dirname(get_ffmpeg_path()) + os.pathsep + os.environ["PATH"]
+
 def format_time(seconds):
     """將秒數轉換為時分秒格式"""
     hours = seconds // 3600

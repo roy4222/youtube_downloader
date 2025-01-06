@@ -1,34 +1,27 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Virtual Environment
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environment
 venv/
 env/
 ENV/
 
-# IDE
+# IDE settings
 .vscode/
 .idea/
 
-# Misc
-.DS_Store
-*.log
+# Specific to this project
+*.spec
+ffmpeg.exe
+ffmpeg.zip
+downloads/
+*.mp4
+*.mp3
+*.webm
