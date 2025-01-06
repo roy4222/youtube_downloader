@@ -28,20 +28,38 @@ def my_hook(d):
                 downloaded = d['downloaded_bytes']
                 percentage = (downloaded / total) * 100
                 speed = d.get('speed', 0)
-                if speed:
-                    speed_mb = speed / 1024 / 1024  # 轉換為 MB/s
-                    print(f"\r下載進度: {percentage:.1f}% (速度: {speed_mb:.1f} MB/s)", end='', file=sys.stderr)
+                
+                # 更新GUI進度條（如果在GUI模式下）
+                if hasattr(sys.stdout, 'gui_instance'):
+                    gui = sys.stdout.gui_instance
+                    gui.update_progress(percentage, speed)
                 else:
-                    print(f"\r下載進度: {percentage:.1f}%", end='', file=sys.stderr)
+                    if speed:
+                        speed_mb = speed / 1024 / 1024  # 轉換為 MB/s
+                        print(f"\r下載進度: {percentage:.1f}% (速度: {speed_mb:.1f} MB/s)", end='', file=sys.stderr)
+                    else:
+                        print(f"\r下載進度: {percentage:.1f}%", end='', file=sys.stderr)
+                        
             elif 'total_bytes_estimate' in d:
                 total = d['total_bytes_estimate']
                 downloaded = d['downloaded_bytes']
                 percentage = (downloaded / total) * 100
-                print(f"\r下載進度: {percentage:.1f}% (預估)", end='', file=sys.stderr)
-        except Exception:
-            print(f"\r下載中...", end='', file=sys.stderr)
+                speed = d.get('speed', 0)
+                
+                # 更新GUI進度條（如果在GUI模式下）
+                if hasattr(sys.stdout, 'gui_instance'):
+                    gui = sys.stdout.gui_instance
+                    gui.update_progress(percentage, speed)
+                else:
+                    print(f"\r下載進度: {percentage:.1f}% (預估)", end='', file=sys.stderr)
+        except Exception as e:
+            print(f"\r下載中... (錯誤: {str(e)})", end='', file=sys.stderr)
     elif d['status'] == 'finished':
-        print("\n下載完成，正在處理...", file=sys.stderr)
+        if hasattr(sys.stdout, 'gui_instance'):
+            gui = sys.stdout.gui_instance
+            gui.update_status("下載完成，正在處理...")
+        else:
+            print("\n下載完成，正在處理...", file=sys.stderr)
 
 def get_available_formats(url):
     """獲取影片可用的畫質選項"""
@@ -265,7 +283,34 @@ def download_video(url, output_path=None):
             'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
             'progress_hooks': [my_hook],
             'quiet': False,
-            'no_warnings': True
+            'no_warnings': True,
+            'concurrent_fragment_downloads': 8,  # 更大的並發數
+            'retries': 10,
+            'fragment_retries': 10,
+            'buffersize': 1024 * 64,  # 更大的緩衝區
+            'http_chunk_size': 52428800,  # 增加到 50MB
+            'socket_timeout': 60,  # 增加超時時間
+            'file_access_retries': 10,
+            'extractor_retries': 5,
+            'throttledratelimit': None,
+            'ratelimit': None,
+            'overwrites': True,
+            'continuedl': True,
+            'noprogress': False,
+            'max_sleep_interval': 3,
+            'sleep_interval': 0.5,
+            'external_downloader': 'aria2c',  # 使用aria2作為外部下載器
+            'external_downloader_args': [
+                '--min-split-size=1M',  # 最小分片大小
+                '--max-connection-per-server=16',  # 每個服務器的最大連接數
+                '--split=16',  # 單個文件的下載線程數
+                '--max-concurrent-downloads=8',  # 並發下載數
+                '--min-tls-version=TLSv1.2',  # 指定TLS版本
+                '--optimize-concurrent-downloads=true',  # 優化並發下載
+                '--file-allocation=none',  # 禁用文件預分配
+                '--async-dns=true',  # 啟用異步DNS
+                '--disable-ipv6=true'  # 禁用IPv6
+            ]
         }
         
         if format_choice == '2':  # 純音樂 MP3
@@ -425,23 +470,23 @@ class YouTubeDownloaderGUI:
         ttk.Radiobutton(format_frame, text="純音樂 (MP3)", variable=self.format_var, value="2").grid(row=0, column=1, padx=20)
         
         # 進度框架
-        progress_frame = ttk.LabelFrame(self.main_frame, text="下載進度", padding="5")
-        progress_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
+        self.progress_frame = ttk.LabelFrame(self.main_frame, text="下載進度", padding="5")
+        self.progress_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
         
         # 進度條
         self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(progress_frame, 
+        self.progress_bar = ttk.Progressbar(self.progress_frame, 
                                           variable=self.progress_var,
                                           mode='determinate',
-                                          length=300)
+                                          length=400)  # 加長進度條
         self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
         
         # 進度標籤
-        self.progress_label = ttk.Label(progress_frame, text="準備下載...")
+        self.progress_label = ttk.Label(self.progress_frame, text="準備下載...")
         self.progress_label.grid(row=1, column=0, sticky=(tk.W), padx=5, pady=2)
         
         # 速度標籤
-        self.speed_label = ttk.Label(progress_frame, text="")
+        self.speed_label = ttk.Label(self.progress_frame, text="")
         self.speed_label.grid(row=2, column=0, sticky=(tk.W), padx=5, pady=2)
         
         # 輸出文本框
@@ -465,38 +510,83 @@ class YouTubeDownloaderGUI:
         
         # 配置grid權重
         self.main_frame.columnconfigure(1, weight=1)
-        progress_frame.columnconfigure(0, weight=1)
+        self.progress_frame.columnconfigure(0, weight=1)
         
         # 重定向標準輸出到GUI
         sys.stdout = self
         sys.stderr = self
+        
+        # 設置GUI實例到stdout
+        sys.stdout.gui_instance = self
+        sys.stderr.gui_instance = self
     
     def write(self, text):
-        if "[download]" in text:
-            try:
-                # 解析進度信息
-                if "%" in text:
-                    progress = float(text.split("%")[0].split()[-1])
-                    self.progress_var.set(progress)
+        """重定向輸出到GUI"""
+        try:
+            # 處理aria2c的進度
+            if "[#" in text and "CN:" in text and "DL:" in text:
+                import re
+                progress_match = re.search(r'\((\d+)%\)', text)
+                speed_match = re.search(r'DL:(\d+\.?\d*)(\w+)', text)
+                
+                if progress_match:
+                    percentage = float(progress_match.group(1))
+                    self.progress_var.set(percentage)
+                    self.progress_label.config(text=f"下載進度: {percentage:.1f}%")
+                
+                if speed_match:
+                    speed_val = float(speed_match.group(1))
+                    speed_unit = speed_match.group(2)
+                    if speed_unit == 'GiB':
+                        speed_mb = speed_val * 1024
+                    elif speed_unit == 'MiB':
+                        speed_mb = speed_val
+                    elif speed_unit == 'KiB':
+                        speed_mb = speed_val / 1024
+                    else:
+                        speed_mb = speed_val / (1024 * 1024)
                     
-                    # 更新進度標籤
+                    self.speed_label.config(text=f"下載速度: {speed_mb:.1f} MB/s")
+            
+            # 處理yt-dlp的進度
+            elif "[download]" in text and "%" in text:
+                try:
+                    # 解析進度信息
                     parts = text.split()
-                    for i, part in enumerate(parts):
-                        if part == "of":
-                            size = parts[i+1]
-                        elif part == "at":
-                            speed = parts[i+1]
-                        elif part == "ETA":
-                            eta = parts[i+1]
-                    
-                    self.progress_label.config(text=f"進度: {progress:.1f}%")
-                    self.speed_label.config(text=f"速度: {speed}/s | 預計剩餘時間: {eta}")
-            except:
-                pass
-        
-        self.output_text.insert(tk.END, text)
-        self.output_text.see(tk.END)
-        self.output_text.update()
+                    for part in parts:
+                        if "%" in part:
+                            percentage = float(part.replace("%", ""))
+                            self.progress_var.set(percentage)
+                            self.progress_label.config(text=f"下載進度: {percentage:.1f}%")
+                        elif "at" in parts and parts.index(part) == parts.index("at") + 1:
+                            speed = part
+                            if speed.endswith("/s"):
+                                speed_val = float(speed[:-3])
+                                if speed.endswith("KiB/s"):
+                                    speed_mb = speed_val / 1024
+                                elif speed.endswith("MiB/s"):
+                                    speed_mb = speed_val
+                                elif speed.endswith("GiB/s"):
+                                    speed_mb = speed_val * 1024
+                                else:
+                                    speed_mb = speed_val / (1024 * 1024)
+                                self.speed_label.config(text=f"下載速度: {speed_mb:.1f} MB/s")
+                except Exception as e:
+                    print(f"Progress parsing error: {str(e)}")
+            
+            # 更新界面
+            self.root.update()
+            
+            # 將文本添加到輸出框
+            self.output_text.insert(tk.END, text)
+            self.output_text.see(tk.END)
+            self.output_text.update()
+            
+        except Exception as e:
+            print(f"Write error: {str(e)}")
+            self.output_text.insert(tk.END, text)
+            self.output_text.see(tk.END)
+            self.output_text.update()
     
     def flush(self):
         pass
@@ -586,42 +676,18 @@ class YouTubeDownloaderGUI:
         self.progress_label.config(text="準備下載...")  # 重置進度標籤
         self.speed_label.config(text="")  # 清空速度標籤
     
-    def progress_hook(self, d):
-        if d['status'] == 'downloading':
-            try:
-                # 計算進度百分比
-                if 'downloaded_bytes' in d and 'total_bytes' in d:
-                    percent = (d['downloaded_bytes'] / d['total_bytes']) * 100
-                elif 'downloaded_bytes' in d and 'total_bytes_estimate' in d:
-                    percent = (d['downloaded_bytes'] / d['total_bytes_estimate']) * 100
-                elif '_percent_str' in d:
-                    percent = float(d['_percent_str'].replace('%', ''))
-                else:
-                    percent = 0
-                
-                # 更新進度條和標籤
-                self.progress_var.set(percent)
-                self.progress_label.config(text=f"進度: {percent:.1f}%")
-                
-                # 更新速度和剩餘時間
-                if 'speed' in d and d['speed'] is not None:
-                    speed = format_bytes(d['speed']) + '/s'
-                    eta = d.get('eta', '未知')
-                    if eta != '未知':
-                        eta = str(datetime.timedelta(seconds=eta))
-                    self.speed_label.config(text=f"速度: {speed} | 預計剩餘時間: {eta}")
-                
-                # 更新輸出文字
-                self.write(f"\r下載進度: {percent:.1f}% | 速度: {speed if 'speed' in locals() else '計算中...'}")
-                
-            except Exception as e:
-                print(f"Progress update error: {e}")
-                
-        elif d['status'] == 'finished':
-            self.write("\n下載完成，正在處理...\n")
-            self.progress_var.set(100)  # 設置進度條為100%
-            self.progress_label.config(text="處理中...")
-            self.speed_label.config(text="")
+    def update_progress(self, percentage, speed=0):
+        """更新下載進度和速度"""
+        self.progress_var.set(percentage)
+        speed_text = f"下載速度: {speed/1024/1024:.1f} MB/s" if speed > 0 else ""
+        self.progress_label.config(text=f"下載進度: {percentage:.1f}%")
+        self.speed_label.config(text=speed_text)
+        self.root.update()
+    
+    def update_status(self, status):
+        """更新狀態文本"""
+        self.progress_label.config(text=status)
+        self.root.update()
     
     def show_quality_options(self, url, formats, output_path):
         def on_quality_select():
@@ -706,26 +772,48 @@ class YouTubeDownloaderGUI:
     def download_with_quality(self, url, output_path, height):
         ydl_opts = {
             'format': f'bestvideo[height={height}]+bestaudio/best' if height else 'bestvideo+bestaudio/best',
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'progress_hooks': [self.progress_hook],
             'merge_output_format': 'mp4',
+            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
             'postprocessors': [{
                 'key': 'FFmpegVideoRemuxer',
                 'preferedformat': 'mp4',
             }],
-            # FFmpeg設置
             'postprocessor_args': [
                 '-c:v', 'copy',
                 '-c:a', 'aac',
                 '-strict', 'experimental'
             ],
             # 優化選項
-            'concurrent_fragments': 3,
+            'concurrent_fragment_downloads': 8,
             'retries': 10,
             'fragment_retries': 10,
-            'http_chunk_size': 10485760,
-            'buffersize': 1024*1024,
-            'socket_timeout': 30,
+            'http_chunk_size': 52428800,
+            'buffersize': 1024*64,
+            'socket_timeout': 60,
+            'file_access_retries': 10,
+            'extractor_retries': 5,
+            'throttledratelimit': None,
+            'ratelimit': None,
+            'overwrites': True,
+            'continuedl': True,
+            'noprogress': False,
+            'max_sleep_interval': 3,
+            'sleep_interval': 0.5,
+            'progress_hooks': [my_hook],
+            'external_downloader': 'aria2c',
+            'external_downloader_args': [
+                '--min-split-size=1M',
+                '--max-connection-per-server=16',
+                '--split=16',
+                '--max-concurrent-downloads=8',
+                '--min-tls-version=TLSv1.2',
+                '--optimize-concurrent-downloads=true',
+                '--file-allocation=none',
+                '--async-dns=true',
+                '--disable-ipv6=true',
+                '--summary-interval=1',  # 更頻繁地更新進度
+                '--console-log-level=notice'  # 確保輸出進度信息
+            ]
         }
         
         try:
@@ -740,35 +828,48 @@ class YouTubeDownloaderGUI:
             ydl_opts = {
                 'format': 'bestaudio/best',
                 'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-                'progress_hooks': [self.progress_hook],
                 'postprocessors': [{
                     'key': 'FFmpegExtractAudio',
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-                # FFmpeg設置
-                'postprocessor_args': [
-                    '-ar', '44100',
-                    '-ac', '2',
-                    '-b:a', '192k'
-                ],
-                # 確保下載最佳音質
                 'format_sort': ['acodec:m4a', 'acodec:mp3', 'acodec'],
                 'prefer_ffmpeg': True,
                 # 優化選項
-                'concurrent_fragments': 3,
+                'concurrent_fragment_downloads': 8,
                 'retries': 10,
                 'fragment_retries': 10,
-                'http_chunk_size': 10485760,
-                'buffersize': 1024*1024,
-                'socket_timeout': 30,
+                'http_chunk_size': 52428800,
+                'buffersize': 1024*64,
+                'socket_timeout': 60,
+                'file_access_retries': 10,
+                'extractor_retries': 5,
+                'throttledratelimit': None,
+                'ratelimit': None,
+                'overwrites': True,
+                'continuedl': True,
+                'noprogress': False,
+                'max_sleep_interval': 3,
+                'sleep_interval': 0.5,
+                'progress_hooks': [my_hook],
+                'external_downloader': 'aria2c',
+                'external_downloader_args': [
+                    '--min-split-size=1M',
+                    '--max-connection-per-server=16',
+                    '--split=16',
+                    '--max-concurrent-downloads=8',
+                    '--min-tls-version=TLSv1.2',
+                    '--optimize-concurrent-downloads=true',
+                    '--file-allocation=none',
+                    '--async-dns=true',
+                    '--disable-ipv6=true'
+                ]
             }
         else:  # MP4
             ydl_opts = {
                 'format': 'bestvideo+bestaudio/best',
-                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-                'progress_hooks': [self.progress_hook],
                 'merge_output_format': 'mp4',
+                'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
                 'postprocessors': [{
                     'key': 'FFmpegVideoRemuxer',
                     'preferedformat': 'mp4',
@@ -780,12 +881,34 @@ class YouTubeDownloaderGUI:
                     '-strict', 'experimental'
                 ],
                 # 優化選項
-                'concurrent_fragments': 3,
+                'concurrent_fragment_downloads': 8,
                 'retries': 10,
                 'fragment_retries': 10,
-                'http_chunk_size': 10485760,
-                'buffersize': 1024*1024,
-                'socket_timeout': 30,
+                'http_chunk_size': 52428800,
+                'buffersize': 1024*64,
+                'socket_timeout': 60,
+                'file_access_retries': 10,
+                'extractor_retries': 5,
+                'throttledratelimit': None,
+                'ratelimit': None,
+                'overwrites': True,
+                'continuedl': True,
+                'noprogress': False,
+                'max_sleep_interval': 3,
+                'sleep_interval': 0.5,
+                'progress_hooks': [my_hook],
+                'external_downloader': 'aria2c',
+                'external_downloader_args': [
+                    '--min-split-size=1M',
+                    '--max-connection-per-server=16',
+                    '--split=16',
+                    '--max-concurrent-downloads=8',
+                    '--min-tls-version=TLSv1.2',
+                    '--optimize-concurrent-downloads=true',
+                    '--file-allocation=none',
+                    '--async-dns=true',
+                    '--disable-ipv6=true'
+                ]
             }
         
         try:
