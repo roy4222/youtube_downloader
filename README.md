@@ -6,7 +6,8 @@
 
 ### 下載功能
 - 支援下載 YouTube 單一影片
-- 可選擇影片品質（最高支援 4K）
+- 支援下載 Bilibili 影片
+- 可選擇影片品質（最高支援 4K，Bilibili 需要大會員權限）
 - 支援純音樂下載（MP3 格式）
 - 自動合併音訊和影片軌
 - 支援斷點續傳
@@ -30,7 +31,7 @@
 ## 使用的函式庫
 
 ### 核心功能
-- **yt-dlp**: YouTube 影片下載核心引擎
+- **yt-dlp**: 影片下載核心引擎，支援 YouTube 和 Bilibili
 - **ffmpeg**: 影片處理和格式轉換
 - **aria2c**: 多線程下載加速
 
@@ -50,7 +51,7 @@
 
 1. 下載最新的發行版本 `youtube_downloader.exe`
 2. 執行程式（無需安裝，直接點擊執行）
-3. 貼上 YouTube 影片網址（支援直接拖放）
+3. 貼上 YouTube 或 Bilibili 影片網址（支援直接拖放）
 4. 選擇下載格式：
    - 一般版（MP4 + 音頻）
    - 純音樂（MP3）
@@ -75,10 +76,10 @@ pillow
 
 ```bash
 # 複製專案
-git clone https://github.com/[username]/youtube-downloader.git
+git clone https://github.com/roy4222/youtube_downloader.git
 
 # 進入專案目錄
-cd youtube-downloader
+cd youtube_downloader
 
 # 安裝所需套件
 pip install -r requirements.txt
@@ -96,7 +97,7 @@ pyinstaller --onefile --noconsole --add-data "ffmpeg.exe;." youtube_downloader.p
 1. **下載速度慢？**
    - 檢查網路連線
    - 確認是否有使用代理伺服器
-   - 可能是 YouTube 流量限制
+   - 可能是 YouTube 或 Bilibili 流量限制
 
 2. **無法下載某些影片？**
    - 確認影片是否有地區限制
@@ -118,4 +119,4 @@ MIT License
 
 ## 免責聲明
 
-本工具僅供學習和個人使用。請遵守 YouTube 服務條款和著作權法。使用者須對下載內容負完全責任。
+本工具僅供學習和個人使用。請遵守 YouTube 和 Bilibili 服務條款和著作權法。使用者須對下載內容負完全責任。
