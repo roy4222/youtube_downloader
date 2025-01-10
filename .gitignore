@@ -43,3 +43,14 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Specific to this project
+ffmpeg.exe
+ffmpeg.zip
+dist/
+build/
+*.spec
+downloads/
+*.mp4
+*.mp3
+*.webm

@@ -58,6 +58,16 @@
 5. 選擇儲存位置
 6. 點擊「開始下載」
 
+## 安裝必要檔案
+
+本程式需要 ffmpeg 才能運作。請依照以下步驟安裝：
+
+1. 下載 ffmpeg：
+   - 從 [ffmpeg 官網](https://www.ffmpeg.org/download.html) 下載
+   - 或從 [這個連結](https://github.com/BtbN/FFmpeg-Builds/releases) 下載 Windows 版本
+2. 解壓縮下載的檔案
+3. 將 `ffmpeg.exe` 放在與程式相同的資料夾中
+
 ## 開發環境需求
 
 ### 必要條件
