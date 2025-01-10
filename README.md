@@ -109,6 +109,16 @@ pyinstaller --onefile --noconsole --add-data "ffmpeg.exe;." youtube_downloader.p
    - 確認磁碟空間是否足夠
    - 檢查是否有防火牆阻擋
 
+## 關於防毒軟體警告
+
+本程式是開源的 YouTube 影片下載工具，使用 Python 開發。由於程式需要存取網路和檔案系統，可能會被某些防毒軟體誤判為可疑程式。這是正常現象，您可以：
+
+1. 在 Windows Defender 中將程式加入信任清單
+2. 直接從 GitHub Releases 頁面下載，而不是從其他來源
+3. 如果您擔心安全性，可以查看原始碼自行編譯
+
+本程式完全開源，原始碼公開在 GitHub 上供檢視，請放心使用。
+
 ## 貢獻指南
 
 歡迎提交 Pull Request 或建立 Issue。

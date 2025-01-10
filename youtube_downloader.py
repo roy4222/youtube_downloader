@@ -270,130 +270,61 @@ def find_downloaded_files(output_path, base_filename):
     
     return video_file, audio_file
 
-def download_video(url, output_path=None):
+def download_video(url, output_path=None, quality=None):
     """下載YouTube視頻或音頻"""
     if output_path is None:
-        output_path = os.path.join(os.getcwd(), 'downloads')
+        output_path = str(Path.home() / "Downloads")
     
-    # 確保輸出目錄存在
-    os.makedirs(output_path, exist_ok=True)
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+        'progress_hooks': [my_hook],
+        'ffmpeg_location': get_ffmpeg_path(),
+        'verbose': True,
+        'ignoreerrors': True,
+        'no_warnings': False,
+        'socket_timeout': 30,  # 設置socket超時
+        'retries': 10,        # 重試次數
+        'fragment_retries': 10,  # 分段下載重試次數
+        'file_access_retries': 10,  # 檔案訪問重試次數
+        'extractor_retries': 10,    # 提取器重試次數
+        'external_downloader': 'aria2c',  # 使用aria2c作為外部下載器
+        'external_downloader_args': [  # aria2c的參數設置
+            '--min-split-size=1M',     # 最小分割大小
+            '--max-connection-per-server=16',  # 每個伺服器最大連接數
+            '--split=16',              # 同時下載的分段數
+            '--max-tries=10',          # 重試次數
+            '--retry-wait=3',          # 重試等待時間
+            '--connect-timeout=10',    # 連接超時
+            '--timeout=10',            # 超時設置
+            '--auto-file-renaming=true',  # 自動重命名
+            '--allow-overwrite=true',     # 允許覆寫
+            '--continue=true',            # 支援斷點續傳
+        ],
+    }
+    
+    if quality:
+        ydl_opts['format'] = f'bestvideo[height<={quality}]+bestaudio/best[height<={quality}]'
     
     try:
-        # 獲取視頻信息
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-        print("\n請選擇下載格式：")
-        print("1. 一般版 (MP4 + 音頻)")
-        print("2. 純音樂 (MP3)")
-        
-        while True:
-            format_choice = input("\n請選擇格式 (1-2): ").strip()
-            if format_choice in ['1', '2']:
-                break
-            print("請輸入有效的選項 (1-2)")
-        
-        # 基本下載選項
-        ydl_opts = {
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
-            'progress_hooks': [my_hook],
-            'quiet': False,
-            'no_warnings': True,
-            'concurrent_fragment_downloads': 8,  # 更大的並發數
-            'retries': 10,
-            'fragment_retries': 10,
-            'buffersize': 1024 * 64,  # 更大的緩衝區
-            'http_chunk_size': 52428800,  # 增加到 50MB
-            'socket_timeout': 60,  # 增加超時時間
-            'file_access_retries': 10,
-            'extractor_retries': 5,
-            'throttledratelimit': None,
-            'ratelimit': None,
-            'overwrites': True,
-            'continuedl': True,
-            'noprogress': False,
-            'max_sleep_interval': 3,
-            'sleep_interval': 0.5,
-            'external_downloader': 'aria2c',  # 使用aria2作為外部下載器
-            'external_downloader_args': [
-                '--min-split-size=1M',  # 最小分片大小
-                '--max-connection-per-server=16',  # 每個服務器的最大連接數
-                '--split=16',  # 單個文件的下載線程數
-                '--max-concurrent-downloads=8',  # 並發下載數
-                '--min-tls-version=TLSv1.2',  # 指定TLS版本
-                '--optimize-concurrent-downloads=true',  # 優化並發下載
-                '--file-allocation=none',  # 禁用文件預分配
-                '--async-dns=true',  # 啟用異步DNS
-                '--disable-ipv6=true'  # 禁用IPv6
-            ]
-        }
-        
-        if format_choice == '2':  # 純音樂 MP3
-            print("\n正在下載 MP3 音頻...")
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            })
-            
-            print(f"\n影片標題: {info.get('title', 'Unknown')}")
-            print(f"總時長: {format_time(info.get('duration', 0))}")
-            print(f"觀看次數: {info.get('view_count', 0)}\n")
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                # 先獲取影片信息
+                info = ydl.extract_info(url, download=False)
+                if info.get('duration', 0) > 7200:  # 如果影片超過2小時
+                    print("注意：這是較長的影片，下載可能需要較長時間，請耐心等待...", file=sys.stderr)
                 
-        else:  # 一般版 MP4
-            formats = get_available_formats(url)
-            print("\n可用的畫質選項：")
-            for i, fmt in enumerate(formats, 1):
-                print(f"{i}. {fmt['quality']} ({fmt['ext']}) - {fmt['filesize_str']}")
-            
-            choice = input("\n請選擇畫質 (輸入數字，直接按Enter使用最佳畫質): ").strip()
-            
-            if choice and choice.isdigit() and 1 <= int(choice) <= len(formats):
-                selected_format = formats[int(choice)-1]
-                height = selected_format["height"]
-            else:
-                height = None
-            
-            # 更新下載選項，確保音頻也被下載
-            ydl_opts.update({
-                'format': f'bestvideo[height={height}]+bestaudio/best' if height else 'bestvideo+bestaudio/best',
-                'merge_output_format': 'mp4',
-                'postprocessors': [{
-                    'key': 'FFmpegVideoRemuxer',
-                    'preferedformat': 'mp4',
-                }],
-                # 添加 FFmpeg 參數以確保音頻被正確合併
-                'postprocessor_args': [
-                    '-c:v', 'copy',
-                    '-c:a', 'aac',
-                    '-strict', 'experimental'
-                ]
-            })
-            
-            print(f"\n影片標題: {info.get('title', 'Unknown')}")
-            print(f"總時長: {format_time(info.get('duration', 0))}")
-            print(f"觀看次數: {info.get('view_count', 0)}\n")
-            
-            print("開始下載視頻...")
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # 開始下載
                 ydl.download([url])
-        
-        print("\n下載完成！")
-        return True
-        
+                return True, None
+            except Exception as e:
+                error_msg = f"下載過程中發生錯誤: {str(e)}"
+                print(error_msg, file=sys.stderr)
+                return False, error_msg
     except Exception as e:
-        print(f"\n下載過程中出現錯誤: {str(e)}")
-        if "HTTP Error 429" in str(e):
-            print("YouTube 暫時限制了下載請求，請稍後再試")
-        elif "This video is not available" in str(e):
-            print("此影片可能有版權限制或地區限制")
-        return False
+        error_msg = f"初始化下載器時發生錯誤: {str(e)}"
+        print(error_msg, file=sys.stderr)
+        return False, error_msg
 
 def check_video_info(video_file):
     """檢查視頻文件的信息"""
@@ -786,7 +717,7 @@ class YouTubeDownloaderGUI:
         
     def download_with_quality(self, url, output_path, height):
         ydl_opts = {
-            'format': f'bestvideo[height={height}]+bestaudio/best' if height else 'bestvideo+bestaudio/best',
+            'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]' if height else 'bestvideo+bestaudio/best',
             'merge_output_format': 'mp4',
             'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
             'postprocessors': [{
