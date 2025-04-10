@@ -44,31 +44,56 @@ ytdl --check
 
 ## 程式架構與組件化
 
-本專案採用模組化設計，未來將持續優化以下組件：
+本專案採用模組化設計，目前已完成以下組件化工作：
 
 ### 現有架構
 
 ```
 youtube_downloader/
-├── youtube_downloader.py  # 主程式
-├── requirements.txt       # 依賴項
-└── README.md              # 說明文件
+├── core/                     # 核心功能模組
+│   ├── __init__.py           # 模組初始化檔案
+│   ├── url_utils.py          # URL 處理工具
+│   ├── download_engine.py    # 下載引擎抽象類
+│   └── download_manager.py   # 下載管理器
+├── ui/                       # 使用者介面模組
+│   ├── __init__.py           # 模組初始化檔案
+│   ├── base.py               # 基礎 UI 元件類別
+│   ├── main_window.py        # 主視窗
+│   ├── url_frame.py          # URL 輸入框架
+│   ├── path_frame.py         # 下載位置選擇框架
+│   ├── format_frame.py       # 下載格式選擇框架
+│   ├── progress_frame.py     # 下載進度顯示框架
+│   ├── output_frame.py       # 輸出文本框架
+│   ├── quality_dialog.py     # 畫質選擇對話框
+│   └── README.md             # UI 模組說明文件
+├── utils/                    # 工具函數模組
+│   └── __init__.py           # 模組初始化檔案
+├── main.py                   # 程式入口
+├── youtube_downloader.py     # 主程式（舊版）
+├── requirements.txt          # 依賴項
+└── README.md                 # 說明文件
 ```
 
-### 未來組件化計劃
+### 已完成的組件化工作
 
 1. **URL 處理模組**
-   - 將 URL 清理和處理邏輯移至單獨模組
-   - 支援更多影片平台的 URL 格式
+   - 實現了 `UrlProcessor` 類別，提供完整的 URL 處理功能
+   - 支援多種 URL 格式和平台 (YouTube, Bilibili)
+   - 提供了 URL 清理、平台檢測、URL 驗證和影片 ID 提取功能
 
 2. **下載引擎抽象化**
-   - 建立抽象下載引擎基類
-   - 實現平台特定下載器 (YouTube, Bilibili 等)
-   - 使用工廠模式自動選擇適合的下載器
+   - 建立了抽象下載引擎基類 `DownloadEngine`
+   - 實現了平台特定下載器 `YouTubeDownloadEngine` 和 `BilibiliDownloadEngine`
+   - 創建了下載引擎工廠類 `DownloadEngineFactory`，自動選擇適合的下載器
+   - 實現了下載管理器 `DownloadManager`，提供統一的下載介面
 
 3. **UI 元件分離**
-   - 將 GUI 相關代碼拆分為多個專注的類別
-   - 提高介面的可維護性和擴展性
+   - 將大型 GUI 類拆分為多個專注的元件
+   - 實現了基礎 UI 元件類別 `BaseFrame` 和 `BaseDialog`
+   - 創建了專注的 UI 元件：URL 輸入、下載位置選擇、格式選擇、進度顯示等
+   - 整合所有元件到主視窗 `MainWindow`
+
+### 待完成的組件化工作
 
 4. **設定管理模組**
    - 保存/載入使用者偏好設定
@@ -81,27 +106,6 @@ youtube_downloader/
 6. **下載任務管理**
    - 支援多任務並行下載
    - 實現暫停、繼續、取消等操作
-
-### 預計架構
-
-```
-youtube_downloader/
-├── core/
-│   ├── url_utils.py        # URL 處理工具
-│   ├── download_engine.py  # 下載引擎抽象類
-│   ├── youtube_engine.py   # YouTube 下載引擎
-│   └── bilibili_engine.py  # Bilibili 下載引擎
-├── ui/
-│   ├── main_window.py      # 主視窗
-│   ├── url_panel.py        # URL 輸入面板
-│   └── progress_panel.py   # 進度顯示面板
-├── utils/
-│   ├── config_manager.py   # 設定管理
-│   └── language_manager.py # 語言管理
-├── main.py                 # 程式入口
-├── requirements.txt        # 依賴項
-└── README.md               # 說明文件
-```
 
 ## 使用方法
 
