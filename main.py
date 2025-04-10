@@ -1,23 +1,28 @@
 """
-影片下載器主程式入口
+影片下載器主程式入口點
 
-啟動影片下載器應用程式，支援 YouTube 和 Bilibili 影片下載
+啟動應用程式的主視窗
 """
 
 import tkinter as tk
-import sys
-import os
-
-# 確保可以導入模組
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# 導入主程式
-from youtube_downloader import YouTubeDownloaderGUI
+from ui.main_window import MainWindow
 
 def main():
-    """主程式入口"""
+    """主程式入口點"""
+    # 創建根視窗
     root = tk.Tk()
-    app = YouTubeDownloaderGUI(root)
+    
+    # 設置主題 (如果支援)
+    try:
+        root.tk.call("source", "azure.tcl")
+        root.tk.call("set_theme", "light")
+    except:
+        pass
+    
+    # 創建主視窗
+    app = MainWindow(root)
+    
+    # 啟動主循環
     root.mainloop()
 
 if __name__ == "__main__":
