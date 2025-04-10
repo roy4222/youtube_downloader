@@ -23,6 +23,8 @@ from PySide6.QtGui import QPixmap, QImage, QFont, QFontMetrics
 import re
 import json
 from urllib.parse import urlparse
+import datetime  # 用於格式化日期
+import locale    # 用於格式化數字
 
 from ui.base import BaseFrame
 from ui.theme import ThemeManager
@@ -97,6 +99,33 @@ class PreviewFrame(BaseFrame):
         self.title_label.setStyleSheet(f"color: {ThemeManager.TEXT_PRIMARY}; padding: {ThemeManager.PADDING_SMALL}px;") # 添加內邊距
         self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         
+        # 添加影片資訊標籤 (上傳日期、觀看次數、影片長度)
+        self.info_container = QFrame(self)
+        self.info_container.setObjectName("infoContainer")
+        self.info_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        
+        # 創建垂直佈局用於顯示影片資訊
+        info_layout = QVBoxLayout(self.info_container)
+        info_layout.setContentsMargins(ThemeManager.PADDING_SMALL, ThemeManager.PADDING_SMALL, 
+                                      ThemeManager.PADDING_SMALL, ThemeManager.PADDING_SMALL)
+        info_layout.setSpacing(5)  # 減小間距使垂直排列更緊湊
+        
+        # 創建各項資訊標籤
+        self.upload_date_label = QLabel("上傳日期: --")
+        self.view_count_label = QLabel("觀看次數: --")
+        self.duration_label = QLabel("影片長度: --")
+        
+        # 設置字體和樣式
+        info_font = QFont()
+        info_font.setPointSize(9)
+        info_style = f"color: {ThemeManager.TEXT_SECONDARY};"
+        
+        for label in [self.upload_date_label, self.view_count_label, self.duration_label]:
+            label.setFont(info_font)
+            label.setStyleSheet(info_style)
+            label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)  # 左對齊
+            info_layout.addWidget(label)
+        
         # 縮圖容器 和 QLabel
         self.thumbnail_container = QFrame(self)
         self.thumbnail_container.setObjectName("thumbnailContainer")
@@ -120,9 +149,10 @@ class PreviewFrame(BaseFrame):
         # 將標籤添加到容器佈局中
         container_layout.addWidget(self.thumbnail_label)
 
-        # 將標題和容器添加到主垂直佈局中
+        # 將標題、縮圖和影片資訊（順序調整）添加到主垂直佈局中
         self.main_layout.addWidget(self.title_label) 
         self.main_layout.addWidget(self.thumbnail_container)
+        self.main_layout.addWidget(self.info_container)
 
     # --- 覆寫大小提示和高度計算 --- 
     def minimumSizeHint(self) -> QSize:
@@ -169,10 +199,16 @@ class PreviewFrame(BaseFrame):
         # 記錄完整的 video_info 結構，幫助調試
         logger.debug(f"接收到影片資訊: {info.keys()}")
         
+        # 保存影片資訊供日後使用
+        self.video_info = info
+        
         # 設置標題
         title = info.get('title', '未知標題')
         self.title_label.setText(title)
         self.title_changed.emit(title)
+        
+        # 更新影片詳細資訊
+        self._update_video_details(info)
         
         # 獲取縮圖 URL
         thumbnail_url = self._get_best_thumbnail(info)
@@ -197,10 +233,231 @@ class PreviewFrame(BaseFrame):
         # 下載縮圖
         self._load_thumbnail(thumbnail_url)
 
+    def _update_video_details(self, info: dict):
+        """更新影片詳細資訊 (上傳日期、觀看次數、影片長度)"""
+        try:
+            # 格式化上傳日期
+            upload_date = info.get('upload_date')
+            if upload_date and len(upload_date) == 8:  # 通常為 YYYYMMDD 格式
+                try:
+                    # 轉換為日期物件
+                    date_obj = datetime.datetime.strptime(upload_date, '%Y%m%d')
+                    # 格式化為年月日
+                    formatted_date = date_obj.strftime('%Y/%m/%d')
+                    self.upload_date_label.setText(f"上傳日期: {formatted_date}")
+                except ValueError:
+                    self.upload_date_label.setText(f"上傳日期: {upload_date}")
+            elif upload_date:
+                self.upload_date_label.setText(f"上傳日期: {upload_date}")
+            else:
+                self.upload_date_label.setText("上傳日期: --")
+                
+            # 格式化觀看次數
+            view_count = info.get('view_count')
+            if view_count is not None:
+                # 使用千分位分隔符格式化數字
+                formatted_count = locale.format_string("%d", view_count, grouping=True)
+                self.view_count_label.setText(f"觀看次數: {formatted_count}")
+            else:
+                self.view_count_label.setText("觀看次數: --")
+                
+            # 格式化影片長度
+            duration = info.get('duration')
+            if duration is not None:
+                # 將秒數轉換為時分秒格式
+                hours, remainder = divmod(int(duration), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                if hours > 0:
+                    formatted_duration = f"{hours}:{minutes:02d}:{seconds:02d}"
+                else:
+                    formatted_duration = f"{minutes}:{seconds:02d}"
+                    
+                self.duration_label.setText(f"影片長度: {formatted_duration}")
+            else:
+                self.duration_label.setText("影片長度: --")
+                
+        except Exception as e:
+            logger.error(f"更新影片詳細資訊時發生錯誤: {e}", exc_info=True)
+            self.upload_date_label.setText("上傳日期: --")
+            self.view_count_label.setText("觀看次數: --")
+            self.duration_label.setText("影片長度: --")
+
+    def _on_video_info_error(self, error: str):
+        """影片資訊載入錯誤"""
+        self.clear_preview()
+        self.title_label.setText(f"載入失敗: {error}")
+        self.title_changed.emit(f"載入失敗: {error}")
+    
+    # --- 縮圖載入和顯示 --- 
+    def _load_thumbnail(self, url: str):
+        """下載並顯示縮圖"""
+        logger.info(f"開始下載縮圖: {url}")
+        try:
+            # 使用 requests 下載縮圖
+            response = requests.get(url)
+            response.raise_for_status()  # 確保請求成功
+            
+            # 從響應內容創建 QImage
+            image_data = response.content
+            image = QImage()
+            image.loadFromData(image_data)
+            
+            if image.isNull():
+                logger.error(f"無法從 URL 加載圖片: {url}")
+                self._clear_thumbnail()
+                return
+                
+            logger.info(f"成功下載縮圖，尺寸: {image.width()}x{image.height()}")
+            
+            # 創建 QPixmap 並設置
+            pixmap = QPixmap.fromImage(image)
+            self.original_pixmap = pixmap
+            
+            # 縮放並顯示
+            self._set_scaled_pixmap()
+            
+        except Exception as e:
+            logger.error(f"下載或設置縮圖時出錯: {e}", exc_info=True)
+            self._clear_thumbnail()
+
+    def _clear_thumbnail(self):
+        """清除縮圖"""
+        self.thumbnail_label.clear()
+        self.thumbnail_label.setText("無法載入縮圖")
+        self.original_pixmap = None
+        self._cleanup_temp_file()
+        logger.debug("縮圖已清除")
+
+    def _cleanup_temp_file(self):
+        """清理舊的臨時縮圖文件"""
+        if self.temp_thumbnail_path and os.path.exists(self.temp_thumbnail_path):
+            try:
+                os.unlink(self.temp_thumbnail_path)
+                logger.debug(f"已刪除臨時縮圖文件: {self.temp_thumbnail_path}")
+                self.temp_thumbnail_path = None
+            except OSError as e:
+                logger.warning(f"刪除臨時縮圖文件失敗: {e}")
+                self.temp_thumbnail_path = None # 即使刪除失敗也重置路徑
+
+    def show_loading(self):
+        """顯示加載中狀態"""
+        self.title_label.setText("載入中...")
+        self.thumbnail_label.clear()
+        self.thumbnail_label.setText("載入中...") # 在標籤上顯示文字
+        self.original_pixmap = None
+        self.title_changed.emit("載入中...")
+        logger.debug("顯示載入中狀態")
+    
+    def clear_preview(self):
+        """清除所有預覽信息"""
+        self.video_info = None
+        self.title_label.setText("尚未載入影片")
+        self._clear_thumbnail()
+        self.title_changed.emit("尚未載入影片")
+        # 重設影片詳細資訊
+        self.upload_date_label.setText("上傳日期: --")
+        self.view_count_label.setText("觀看次數: --")
+        self.duration_label.setText("影片長度: --")
+        logger.debug("預覽已清除")
+
+    # --- 事件處理 --- 
+    def resizeEvent(self, event):
+        """處理視窗或元件大小變化事件"""
+        super().resizeEvent(event)
+        logger.debug(f"resizeEvent 觸發，新尺寸: {event.size().width()}x{event.size().height()}")
+        # 延遲一點調用縮放，確保佈局已經更新
+        # QtCore.QTimer.singleShot(0, self._set_scaled_pixmap)
+        # 或者直接調用，看看效果
+        self._set_scaled_pixmap()
+
+    def _set_scaled_pixmap(self):
+        """根據 QLabel 的可用空間縮放並設置 QPixmap，保持 16:9 的寬高比。"""
+        if self.original_pixmap is None:
+            self.thumbnail_label.clear()
+            logger.debug("_set_scaled_pixmap: 清除縮圖")
+            return
+
+        container_size = self.thumbnail_container.size()
+        available_width = container_size.width()
+        available_height = container_size.height()
+        logger.debug(f"_set_scaled_pixmap: 容器尺寸 = {available_width}x{available_height}")
+
+        if available_width <= 0 or available_height <= 0:
+            logger.warning(f"_set_scaled_pixmap: 容器尺寸無效 ({available_width}x{available_height})，跳過縮放")
+            # 即使尺寸無效，也嘗試設置原始圖片，或者一個預設/錯誤圖片
+            # self.thumbnail_label.setPixmap(self.original_pixmap)
+            return
+
+        # 計算基於寬度的目標尺寸
+        target_width_from_width = available_width
+        target_height_from_width = int(target_width_from_width / self.ASPECT_RATIO)
+
+        # 計算基於高度的目標尺寸
+        target_height_from_height = available_height
+        target_width_from_height = int(target_height_from_height * self.ASPECT_RATIO)
+
+        # 決定最終目標尺寸
+        if target_height_from_width <= available_height:
+            # 使用基於寬度的尺寸 (寬度受限或剛好)
+            target_width = target_width_from_width
+            target_height = target_height_from_width
+            logger.debug(f"縮放決策: 寬度限制. 目標尺寸: {target_width}x{target_height}")
+        else:
+            # 使用基於高度的尺寸 (高度受限)
+            target_width = target_width_from_height
+            target_height = target_height_from_height
+            logger.debug(f"縮放決策: 高度限制. 目標尺寸: {target_width}x{target_height}")
+
+        # 確保目標尺寸有效
+        if target_width <= 0 or target_height <= 0:
+            logger.warning(f"_set_scaled_pixmap: 計算出的目標尺寸無效 ({target_width}x{target_height})，跳過縮放")
+            return
+
+        logger.debug(f"_set_scaled_pixmap: 原始 pixmap 尺寸 = {self.original_pixmap.width()}x{self.original_pixmap.height()}")
+        logger.debug(f"_set_scaled_pixmap: 最終目標縮放尺寸 = {target_width}x{target_height}")
+        # 新增日誌: 比較原始尺寸和目標尺寸，判斷是放大還是縮小
+        if self.original_pixmap.width() < target_width or self.original_pixmap.height() < target_height:
+            logger.warning(f"需要放大縮圖！原始: {self.original_pixmap.width()}x{self.original_pixmap.height()}, 目標: {target_width}x{target_height}")
+        else:
+            logger.debug(f"需要縮小或維持縮圖。原始: {self.original_pixmap.width()}x{self.original_pixmap.height()}, 目標: {target_width}x{target_height}")
+
+        try:
+            # 縮放 pixmap 並保持寬高比，使用更平滑的轉換模式
+            scaled_pixmap = self.original_pixmap.scaled(
+                target_width,
+                target_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation  # 使用平滑轉換
+            )
+            logger.debug(f"_set_scaled_pixmap: 縮放後 pixmap 尺寸 = {scaled_pixmap.width()}x{scaled_pixmap.height()}")
+
+            # 確保縮放後的尺寸不超過容器，理論上不應發生，但作為安全檢查
+            if scaled_pixmap.width() > available_width or scaled_pixmap.height() > available_height:
+                logger.warning(f"縮放後的 pixmap ({scaled_pixmap.width()}x{scaled_pixmap.height()}) 超出容器 ({available_width}x{available_height})，重新裁剪")
+                # 如果縮放結果超出，則以容器大小再次強制縮放（可能破壞比例，但不應發生）
+                scaled_pixmap = scaled_pixmap.scaled(
+                    available_width,
+                    available_height,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+
+            self.thumbnail_label.setPixmap(scaled_pixmap)
+            # 確保 QLabel 尺寸與縮放後的 pixmap 同步，以便佈局正確置中
+            self.thumbnail_label.setFixedSize(scaled_pixmap.size())
+            logger.info(f"成功設置縮放後的縮圖，尺寸：{scaled_pixmap.width()}x{scaled_pixmap.height()}")
+
+        except Exception as e:
+            logger.error(f"縮放或設置 pixmap 時發生錯誤: {e}", exc_info=True)
+            self.thumbnail_label.clear() # 出錯時清除
+
     def _get_bilibili_thumbnail_from_url(self, url):
         """從 bilibili URL 直接提取縮圖"""
         try:
             # 從 URL 中提取 BV 號或 AV 號
+            logger.info(f"嘗試從 bilibili URL 提取縮圖: {url}")
+            
             bv_match = re.search(r'BV\w+', url)
             av_match = re.search(r'av(\d+)', url)
             
@@ -217,6 +474,7 @@ class PreviewFrame(BaseFrame):
             
             # 構建 API URL
             api_url = f"https://api.bilibili.com/x/web-interface/view?bvid={video_id}" if video_id.startswith('BV') else f"https://api.bilibili.com/x/web-interface/view?aid={video_id[2:]}"
+            logger.info(f"使用 bilibili API URL: {api_url}")
             
             # 請求 API
             headers = {
@@ -320,170 +578,3 @@ class PreviewFrame(BaseFrame):
         best_thumbnail = valid_thumbnails[0]
         logger.info(f"選擇的最佳縮圖 URL: {best_thumbnail['url']} (原始尺寸: {best_thumbnail.get('width')}x{best_thumbnail.get('height')})")
         return best_thumbnail['url']
-
-    def _on_video_info_error(self, error: str):
-        """影片資訊載入錯誤"""
-        self.clear_preview()
-        self.title_label.setText(f"載入失敗: {error}")
-        self.title_changed.emit(f"載入失敗: {error}")
-    
-    # --- 縮圖載入和顯示 --- 
-    def _load_thumbnail(self, url: str):
-        """從 URL 載入縮圖到記憶體"""
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-            }
-            response = requests.get(url, stream=True, headers=headers, timeout=10)
-            response.raise_for_status() # 檢查 HTTP 錯誤
-
-            # 載入到 QPixmap
-            pixmap = QPixmap()
-            if pixmap.loadFromData(response.content):
-                 if not pixmap.isNull():
-                    logger.info(f"縮圖載入成功，原始尺寸: {pixmap.width()}x{pixmap.height()}")
-                    self.original_pixmap = pixmap
-                    # 清理舊的臨時文件（如果之前有保存到文件）
-                    self._cleanup_temp_file()
-                    self._set_scaled_pixmap() # 初始設置縮圖
-                    return
-                 else:
-                    logger.error("從數據載入 QPixmap 失敗，結果為空")
-            else:
-                 logger.error(f"從數據載入 QPixmap 失敗 (url: {url})")
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"下載縮圖時發生網路錯誤: {e}", exc_info=True)
-        except Exception as e:
-            logger.error(f"載入縮圖時發生未知錯誤: {e}", exc_info=True)
-        
-        # 如果載入失敗
-        self._clear_thumbnail()
-
-    def _set_scaled_pixmap(self):
-        """根據 QLabel 的可用空間縮放並設置 QPixmap，保持 16:9 的寬高比。"""
-        if self.original_pixmap is None:
-            self.thumbnail_label.clear()
-            logger.debug("_set_scaled_pixmap: 清除縮圖")
-            return
-
-        container_size = self.thumbnail_container.size()
-        available_width = container_size.width()
-        available_height = container_size.height()
-        logger.debug(f"_set_scaled_pixmap: 容器尺寸 = {available_width}x{available_height}")
-
-        if available_width <= 0 or available_height <= 0:
-            logger.warning(f"_set_scaled_pixmap: 容器尺寸無效 ({available_width}x{available_height})，跳過縮放")
-            # 即使尺寸無效，也嘗試設置原始圖片，或者一個預設/錯誤圖片
-            # self.thumbnail_label.setPixmap(self.original_pixmap)
-            return
-
-        # 計算基於寬度的目標尺寸
-        target_width_from_width = available_width
-        target_height_from_width = int(target_width_from_width / self.ASPECT_RATIO)
-
-        # 計算基於高度的目標尺寸
-        target_height_from_height = available_height
-        target_width_from_height = int(target_height_from_height * self.ASPECT_RATIO)
-
-        # 決定最終目標尺寸
-        if target_height_from_width <= available_height:
-            # 使用基於寬度的尺寸 (寬度受限或剛好)
-            target_width = target_width_from_width
-            target_height = target_height_from_width
-            logger.debug(f"縮放決策: 寬度限制. 目標尺寸: {target_width}x{target_height}")
-        else:
-            # 使用基於高度的尺寸 (高度受限)
-            target_width = target_width_from_height
-            target_height = target_height_from_height
-            logger.debug(f"縮放決策: 高度限制. 目標尺寸: {target_width}x{target_height}")
-
-        # 確保目標尺寸有效
-        if target_width <= 0 or target_height <= 0:
-            logger.warning(f"_set_scaled_pixmap: 計算出的目標尺寸無效 ({target_width}x{target_height})，跳過縮放")
-            return
-
-        logger.debug(f"_set_scaled_pixmap: 原始 pixmap 尺寸 = {self.original_pixmap.width()}x{self.original_pixmap.height()}")
-        logger.debug(f"_set_scaled_pixmap: 最終目標縮放尺寸 = {target_width}x{target_height}")
-        # 新增日誌: 比較原始尺寸和目標尺寸，判斷是放大還是縮小
-        if self.original_pixmap.width() < target_width or self.original_pixmap.height() < target_height:
-            logger.warning(f"需要放大縮圖！原始: {self.original_pixmap.width()}x{self.original_pixmap.height()}, 目標: {target_width}x{target_height}")
-        else:
-            logger.debug(f"需要縮小或維持縮圖。原始: {self.original_pixmap.width()}x{self.original_pixmap.height()}, 目標: {target_width}x{target_height}")
-
-        try:
-            # 縮放 pixmap 並保持寬高比，使用更平滑的轉換模式
-            scaled_pixmap = self.original_pixmap.scaled(
-                target_width,
-                target_height,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation  # 使用平滑轉換
-            )
-            logger.debug(f"_set_scaled_pixmap: 縮放後 pixmap 尺寸 = {scaled_pixmap.width()}x{scaled_pixmap.height()}")
-
-            # 確保縮放後的尺寸不超過容器，理論上不應發生，但作為安全檢查
-            if scaled_pixmap.width() > available_width or scaled_pixmap.height() > available_height:
-                logger.warning(f"縮放後的 pixmap ({scaled_pixmap.width()}x{scaled_pixmap.height()}) 超出容器 ({available_width}x{available_height})，重新裁剪")
-                # 如果縮放結果超出，則以容器大小再次強制縮放（可能破壞比例，但不應發生）
-                scaled_pixmap = scaled_pixmap.scaled(
-                    available_width,
-                    available_height,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-
-            self.thumbnail_label.setPixmap(scaled_pixmap)
-            # 確保 QLabel 尺寸與縮放後的 pixmap 同步，以便佈局正確置中
-            self.thumbnail_label.setFixedSize(scaled_pixmap.size())
-            logger.info(f"成功設置縮放後的縮圖，尺寸：{scaled_pixmap.width()}x{scaled_pixmap.height()}")
-
-        except Exception as e:
-            logger.error(f"縮放或設置 pixmap 時發生錯誤: {e}", exc_info=True)
-            self.thumbnail_label.clear() # 出錯時清除
-
-    def _clear_thumbnail(self):
-        """清除縮圖"""
-        self.thumbnail_label.clear()
-        self.thumbnail_label.setText("無法載入縮圖")
-        self.original_pixmap = None
-        self._cleanup_temp_file()
-        logger.debug("縮圖已清除")
-
-    def _cleanup_temp_file(self):
-        """清理舊的臨時縮圖文件"""
-        if self.temp_thumbnail_path and os.path.exists(self.temp_thumbnail_path):
-            try:
-                os.unlink(self.temp_thumbnail_path)
-                logger.debug(f"已刪除臨時縮圖文件: {self.temp_thumbnail_path}")
-                self.temp_thumbnail_path = None
-            except OSError as e:
-                logger.warning(f"刪除臨時縮圖文件失敗: {e}")
-                self.temp_thumbnail_path = None # 即使刪除失敗也重置路徑
-
-    def show_loading(self):
-        """顯示加載中狀態"""
-        self.title_label.setText("載入中...")
-        self.thumbnail_label.clear()
-        self.thumbnail_label.setText("載入中...") # 在標籤上顯示文字
-        self.original_pixmap = None
-        self.title_changed.emit("載入中...")
-        logger.debug("顯示載入中狀態")
-    
-    def clear_preview(self):
-        """清除所有預覽信息"""
-        self.video_info = None
-        self.title_label.setText("尚未載入影片")
-        self._clear_thumbnail()
-        self.title_changed.emit("尚未載入影片")
-        logger.debug("預覽已清除")
-
-    # --- 事件處理 --- 
-    def resizeEvent(self, event):
-        """處理視窗或元件大小變化事件"""
-        super().resizeEvent(event)
-        logger.debug(f"resizeEvent 觸發，新尺寸: {event.size().width()}x{event.size().height()}")
-        # 延遲一點調用縮放，確保佈局已經更新
-        # QtCore.QTimer.singleShot(0, self._set_scaled_pixmap)
-        # 或者直接調用，看看效果
-        self._set_scaled_pixmap()
