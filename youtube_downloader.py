@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from threading import Thread
 import datetime
+import re
 
 def format_time(seconds):
     """將秒數轉換為時分秒格式"""
@@ -257,7 +258,7 @@ def find_downloaded_files(output_path, base_filename):
     return video_file, audio_file
 
 def download_video(url, output_path=None):
-    """下載YouTube視頻或音頻"""
+    """下載YouTube或Bilibili視頻或音頻"""
     if output_path is None:
         output_path = os.getcwd()
 
@@ -293,6 +294,19 @@ def download_video(url, output_path=None):
                 '--stream-piece-selector=inorder' # 按順序下載分片
             ]
         }
+        
+        # 針對 Bilibili 的特定選項
+        if 'bilibili.com' in url:
+            # Bilibili 特定的下載選項
+            ydl_opts.update({
+                'format': 'bestvideo+bestaudio/best',  # Bilibili 格式選擇
+                'merge_output_format': 'mp4',  # 確保輸出為 MP4
+                'http_headers': {  # Bilibili 需要特定的 headers
+                    'Referer': 'https://www.bilibili.com',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            })
+            print("\n檢測到 Bilibili 網址，使用 Bilibili 特定下載設定...")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             try:
@@ -380,17 +394,55 @@ def check_video_info(video_file):
         print(f"檢查視頻文件時出錯: {str(e)}")
         return False
 
+def clean_url(url):
+    """清理並提取有效的影片 URL"""
+    if not url:
+        return url
+        
+    # 處理 Bilibili URL
+    if "bilibili.com" in url:
+        # 從文字中提取 Bilibili URL 格式 (BV開頭的ID 或 av開頭的ID)
+        bilibili_patterns = [
+            r'(https?://(?:www\.)?bilibili\.com/video/(?:BV[\w]+|av\d+)/?[^\s\?"]*)',  # 標準格式
+            r'(https?://b23\.tv/[\w]+/?[^\s\?"]*)'  # 短網址格式
+        ]
+        
+        for pattern in bilibili_patterns:
+            match = re.search(pattern, url)
+            if match:
+                clean_url = match.group(1)
+                # 移除多餘的參數
+                if '?' in clean_url:
+                    clean_url = clean_url.split('?')[0]
+                return clean_url
+    
+    # 處理 YouTube URL
+    elif "youtube.com" in url or "youtu.be" in url:
+        # 從文字中提取 YouTube URL
+        youtube_patterns = [
+            r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=)[\w\-]+[^\s]*)',  # 標準格式
+            r'(https?://(?:www\.)?(?:youtu\.be/)[\w\-]+[^\s]*)'  # 短網址格式
+        ]
+        
+        for pattern in youtube_patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+    
+    # 如果無法提取，返回原始 URL
+    return url
+
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("YouTube 影片下載器")
+        self.root.title("影片下載器 - YouTube & Bilibili")
         
         # 主框架
         self.main_frame = ttk.Frame(root, padding="10")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # URL輸入框架
-        url_frame = ttk.LabelFrame(self.main_frame, text="影片網址", padding="5")
+        url_frame = ttk.LabelFrame(self.main_frame, text="影片網址 (支援 YouTube 和 Bilibili)", padding="5")
         url_frame.grid(row=0, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=5)
         
         self.url_var = tk.StringVar()
@@ -540,9 +592,20 @@ class YouTubeDownloaderGUI:
     def paste_url(self):
         try:
             url = self.root.clipboard_get()
-            if "youtube.com" in url or "youtu.be" in url:
+            
+            # 處理可能包含標題的 URL
+            if "youtube.com" in url or "youtu.be" in url or "bilibili.com" in url or "b23.tv" in url:
+                # 提取真正的 URL
+                original_url = url
+                url = clean_url(url)
+                
+                if url != original_url:
+                    self.write(f"已清理 URL: {url}\n")
+                
                 self.url_var.set(url)
-        except:
+                self.write("URL 已貼上並處理完成\n")
+        except Exception as e:
+            self.write(f"貼上 URL 時出錯: {str(e)}\n")
             pass
             
     def browse_output_path(self):
@@ -556,7 +619,7 @@ class YouTubeDownloaderGUI:
     def start_download(self):
         url = self.url_var.get().strip()
         if not url:
-            messagebox.showerror("錯誤", "請輸入YouTube URL")
+            messagebox.showerror("錯誤", "請輸入YouTube或Bilibili URL")
             return
         
         output_path = self.output_path_var.get()
@@ -569,38 +632,56 @@ class YouTubeDownloaderGUI:
         Thread(target=self.download_thread, args=(url, output_path)).start()
     
     def download_thread(self, url, output_path):
+        """在後台執行下載任務"""
         try:
+            self.update_status("正在獲取影片資訊...")
+            
+            # 清理 URL，確保格式正確
+            original_url = url
+            url = clean_url(url)
+            
+            if url != original_url:
+                self.write(f"已清理 URL: {url}\n")
+            
             os.makedirs(output_path, exist_ok=True)
             
             # 獲取視頻信息
-            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
-                info = ydl.extract_info(url, download=False)
+            try:
+                with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    
+                video_title = info.get('title', 'video')
+                filename = os.path.join(output_path, f"{video_title}.{'mp3' if self.format_var.get() == '2' else 'mp4'}")
                 
-            video_title = info.get('title', 'video')
-            filename = os.path.join(output_path, f"{video_title}.{'mp3' if self.format_var.get() == '2' else 'mp4'}")
-            
-            if os.path.exists(filename):
-                if not messagebox.askyesno("文件已存在", 
-                    f"文件 '{os.path.basename(filename)}' 已存在。\n是否要重新下載？"):
-                    self.write("\n已取消下載：文件已存在\n")
-                    self.reset_ui()
-                    return
-            
-            # 顯示視頻信息
-            self.write(f"\n====== 視頻信息 ======\n")
-            self.write(f"標題: {info.get('title', 'Unknown')}\n")
-            self.write(f"時長: {format_time(info.get('duration', 0))}\n")
-            self.write(f"觀看次數: {info.get('view_count', 0):,}\n")
-            self.write("==================\n\n")
-            
-            format_choice = self.format_var.get()
-            if format_choice == "1":  # MP4
-                formats = get_available_formats(url)
-                if formats:
-                    self.show_quality_options(url, formats, output_path)
-                else:
+                # 檢查文件是否已存在
+                if os.path.exists(filename):
+                    if not messagebox.askyesno("文件已存在", 
+                        f"文件 '{os.path.basename(filename)}' 已存在。\n是否要重新下載？"):
+                        self.write("\n已取消下載：文件已存在\n")
+                        self.reset_ui()
+                        return
+                
+                # 顯示視頻信息
+                self.write(f"\n====== 視頻信息 ======\n")
+                self.write(f"標題: {info.get('title', 'Unknown')}\n")
+                self.write(f"時長: {format_time(info.get('duration', 0))}\n")
+                self.write(f"觀看次數: {info.get('view_count', 0):,}\n")
+                self.write("==================\n\n")
+                
+                format_choice = self.format_var.get()
+                if format_choice == "1":  # MP4
+                    formats = get_available_formats(url)
+                    if formats:
+                        self.show_quality_options(url, formats, output_path)
+                    else:
+                        self.download_with_format(url, output_path, format_choice)
+                else:  # MP3
                     self.download_with_format(url, output_path, format_choice)
-            else:  # MP3
+            
+            except Exception as e:
+                self.write(f"無法獲取影片資訊，嘗試直接下載: {str(e)}\n")
+                # 如果無法獲取資訊，嘗試直接下載
+                format_choice = self.format_var.get()
                 self.download_with_format(url, output_path, format_choice)
                 
         except Exception as e:
@@ -749,19 +830,30 @@ class YouTubeDownloaderGUI:
             'external_downloader': 'aria2c',
             'external_downloader_args': [
                 '--min-split-size=1M',
-                '--max-connection-per-server=16',  # 增加到伺服器的連接數
-                '--split=16',                      # 分片數量
-                '--max-concurrent-downloads=16',   # 最大並發下載數
-                '--max-tries=10',                 # 重試次數
-                '--retry-wait=3',                 # 重試等待時間
-                '--auto-file-renaming=false',     # 禁止自動重命名
-                '--allow-overwrite=true',         # 允許覆蓋
-                '--continue=true',                # 開啟斷點續傳
-                '--timeout=120',                  # aria2c 的超時設置
-                '--connect-timeout=120',          # 連接超時
-                '--stream-piece-selector=inorder' # 按順序下載分片
+                '--max-connection-per-server=16',
+                '--split=16',
+                '--max-concurrent-downloads=16',
+                '--max-tries=10',
+                '--retry-wait=3',
+                '--auto-file-renaming=false',
+                '--allow-overwrite=true',
+                '--continue=true',
+                '--timeout=120',
+                '--connect-timeout=120',
+                '--stream-piece-selector=inorder'
             ]
         }
+        
+        # 針對 Bilibili 的特定選項
+        if 'bilibili.com' in url:
+            # Bilibili 特定的下載選項
+            ydl_opts.update({
+                'http_headers': {  # Bilibili 需要特定的 headers
+                    'Referer': 'https://www.bilibili.com',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            })
+            self.write("\n檢測到 Bilibili 網址，使用 Bilibili 特定下載設定...\n")
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -802,19 +894,30 @@ class YouTubeDownloaderGUI:
                 'external_downloader': 'aria2c',
                 'external_downloader_args': [
                     '--min-split-size=1M',
-                    '--max-connection-per-server=16',  # 增加到伺服器的連接數
-                    '--split=16',                      # 分片數量
-                    '--max-concurrent-downloads=16',   # 最大並發下載數
-                    '--max-tries=10',                 # 重試次數
-                    '--retry-wait=3',                 # 重試等待時間
-                    '--auto-file-renaming=false',     # 禁止自動重命名
-                    '--allow-overwrite=true',         # 允許覆蓋
-                    '--continue=true',                # 開啟斷點續傳
-                    '--timeout=120',                  # aria2c 的超時設置
-                    '--connect-timeout=120',          # 連接超時
-                    '--stream-piece-selector=inorder' # 按順序下載分片
+                    '--max-connection-per-server=16',
+                    '--split=16',
+                    '--max-concurrent-downloads=16',
+                    '--max-tries=10',
+                    '--retry-wait=3',
+                    '--auto-file-renaming=false',
+                    '--allow-overwrite=true',
+                    '--continue=true',
+                    '--timeout=120',
+                    '--connect-timeout=120',
+                    '--stream-piece-selector=inorder'
                 ]
             }
+            
+            # 針對 Bilibili 的特定選項
+            if 'bilibili.com' in url:
+                # Bilibili 特定的下載選項
+                ydl_opts.update({
+                    'http_headers': {  # Bilibili 需要特定的 headers
+                        'Referer': 'https://www.bilibili.com',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                })
+                self.write("\n檢測到 Bilibili 網址，使用 Bilibili 特定下載設定...\n")
         else:  # MP4
             ydl_opts = {
                 'format': 'bestvideo+bestaudio/best',
@@ -824,7 +927,6 @@ class YouTubeDownloaderGUI:
                     'key': 'FFmpegVideoRemuxer',
                     'preferedformat': 'mp4',
                 }],
-                # FFmpeg設置
                 'postprocessor_args': [
                     '-c:v', 'copy',
                     '-c:a', 'aac',
@@ -850,25 +952,37 @@ class YouTubeDownloaderGUI:
                 'external_downloader': 'aria2c',
                 'external_downloader_args': [
                     '--min-split-size=1M',
-                    '--max-connection-per-server=16',  # 增加到伺服器的連接數
-                    '--split=16',                      # 分片數量
-                    '--max-concurrent-downloads=16',   # 最大並發下載數
-                    '--max-tries=10',                 # 重試次數
-                    '--retry-wait=3',                 # 重試等待時間
-                    '--auto-file-renaming=false',     # 禁止自動重命名
-                    '--allow-overwrite=true',         # 允許覆蓋
-                    '--continue=true',                # 開啟斷點續傳
-                    '--timeout=120',                  # aria2c 的超時設置
-                    '--connect-timeout=120',          # 連接超時
-                    '--stream-piece-selector=inorder' # 按順序下載分片
+                    '--max-connection-per-server=16',
+                    '--split=16',
+                    '--max-concurrent-downloads=16',
+                    '--max-tries=10',
+                    '--retry-wait=3',
+                    '--auto-file-renaming=false',
+                    '--allow-overwrite=true',
+                    '--continue=true',
+                    '--timeout=120',
+                    '--connect-timeout=120',
+                    '--stream-piece-selector=inorder'
                 ]
             }
+            
+            # 針對 Bilibili 的特定選項
+            if 'bilibili.com' in url:
+                # Bilibili 特定的下載選項
+                ydl_opts.update({
+                    'http_headers': {  # Bilibili 需要特定的 headers
+                        'Referer': 'https://www.bilibili.com',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                })
+                self.write("\n檢測到 Bilibili 網址，使用 Bilibili 特定下載設定...\n")
         
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             self.write("\n下載完成！\n")
         except Exception as e:
+            self.write(f"\n下載失敗: {str(e)}\n")
             raise e
 
     def close_window(self):
