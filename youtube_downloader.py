@@ -11,6 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 from threading import Thread
 import datetime
 import re
+from core.url_utils import clean_url, detect_platform, validate_url, extract_video_id
 
 def format_time(seconds):
     """將秒數轉換為時分秒格式"""
@@ -394,44 +395,6 @@ def check_video_info(video_file):
         print(f"檢查視頻文件時出錯: {str(e)}")
         return False
 
-def clean_url(url):
-    """清理並提取有效的影片 URL"""
-    if not url:
-        return url
-        
-    # 處理 Bilibili URL
-    if "bilibili.com" in url:
-        # 從文字中提取 Bilibili URL 格式 (BV開頭的ID 或 av開頭的ID)
-        bilibili_patterns = [
-            r'(https?://(?:www\.)?bilibili\.com/video/(?:BV[\w]+|av\d+)/?[^\s\?"]*)',  # 標準格式
-            r'(https?://b23\.tv/[\w]+/?[^\s\?"]*)'  # 短網址格式
-        ]
-        
-        for pattern in bilibili_patterns:
-            match = re.search(pattern, url)
-            if match:
-                clean_url = match.group(1)
-                # 移除多餘的參數
-                if '?' in clean_url:
-                    clean_url = clean_url.split('?')[0]
-                return clean_url
-    
-    # 處理 YouTube URL
-    elif "youtube.com" in url or "youtu.be" in url:
-        # 從文字中提取 YouTube URL
-        youtube_patterns = [
-            r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=)[\w\-]+[^\s]*)',  # 標準格式
-            r'(https?://(?:www\.)?(?:youtu\.be/)[\w\-]+[^\s]*)'  # 短網址格式
-        ]
-        
-        for pattern in youtube_patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
-    
-    # 如果無法提取，返回原始 URL
-    return url
-
 class YouTubeDownloaderGUI:
     def __init__(self, root):
         self.root = root
@@ -636,12 +599,17 @@ class YouTubeDownloaderGUI:
         try:
             self.update_status("正在獲取影片資訊...")
             
-            # 清理 URL，確保格式正確
+            # 使用新的 URL 處理模組清理 URL
             original_url = url
             url = clean_url(url)
             
             if url != original_url:
                 self.write(f"已清理 URL: {url}\n")
+                
+            # 檢測平台
+            platform = detect_platform(url)
+            if platform != "unknown":
+                self.write(f"檢測到平台: {platform.capitalize()}\n")
             
             os.makedirs(output_path, exist_ok=True)
             
@@ -666,6 +634,14 @@ class YouTubeDownloaderGUI:
                 self.write(f"標題: {info.get('title', 'Unknown')}\n")
                 self.write(f"時長: {format_time(info.get('duration', 0))}\n")
                 self.write(f"觀看次數: {info.get('view_count', 0):,}\n")
+                
+                # 顯示平台特定資訊
+                if platform == "youtube":
+                    self.write(f"頻道: {info.get('channel', 'Unknown')}\n")
+                    self.write(f"上傳日期: {info.get('upload_date', 'Unknown')}\n")
+                elif platform == "bilibili":
+                    self.write(f"UP主: {info.get('uploader', 'Unknown')}\n")
+                    
                 self.write("==================\n\n")
                 
                 format_choice = self.format_var.get()
