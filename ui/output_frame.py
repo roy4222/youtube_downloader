@@ -1,232 +1,152 @@
 """
-輸出文本框架元件
+Qt 版本的輸出框架
 
-提供下載日誌顯示功能
+顯示下載日誌和輸出資訊
 """
 
-import re
-import tkinter as tk
-from tkinter import ttk
-from typing import Callable, Optional, Dict, Any
+from PySide6.QtWidgets import (
+    QPlainTextEdit, QPushButton, QLabel, QHBoxLayout, QVBoxLayout,
+    QCheckBox
+)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QTextCursor, QTextCharFormat
 
-try:
-    from ui.theme import ThemeManager
-except ImportError:
-    # 如果主題管理器不可用，使用空的類別
-    class ThemeManager:
-        PADDING = {'small': 5, 'medium': 10, 'large': 15}
-        COLORS = {
-            'primary': '#3498db',
-            'secondary': '#2ecc71',
-            'accent': '#e74c3c',
-            'success': '#27ae60',
-            'warning': '#f39c12',
-            'error': '#c0392b'
-        }
-        
-        @classmethod
-        def apply_modern_widget_style(cls, widget):
-            pass
+from .base import BaseFrame
+from .theme import ThemeManager
 
-
-class OutputFrame(ttk.Frame):
-    """輸出文本框架元件"""
+class OutputFrame(BaseFrame):
+    """輸出框架，顯示下載日誌和輸出資訊"""
     
-    def __init__(self, parent, progress_callback: Optional[Callable] = None, **kwargs):
-        """
-        初始化輸出文本框架
-        
-        Args:
-            parent: 父容器
-            progress_callback: 進度更新回調函數
-            **kwargs: 傳遞給 Frame 的參數
-        """
-        # 設置默認樣式
-        kwargs.setdefault('padding', ThemeManager.PADDING['medium'])
-        
-        super().__init__(parent, **kwargs)
-        self.parent = parent
-        self.progress_callback = progress_callback
-        self.create_widgets()
+    # 自定義信號
+    log_added = Signal(str)  # 日誌添加時發出
     
-    def create_widgets(self):
-        """創建輸出文本框架內的元件"""
-        # 創建標題標籤
-        title_label = ttk.Label(
-            self, 
-            text="下載日誌", 
-            font=('Microsoft JhengHei UI', 11, 'bold'),
-            foreground=ThemeManager.COLORS['primary'] if hasattr(ThemeManager, 'COLORS') else '#3498db'
-        )
-        title_label.pack(side=tk.TOP, anchor=tk.W, padx=ThemeManager.PADDING['small'], 
-                        pady=(0, ThemeManager.PADDING['small']))
+    # 日誌類型
+    LOG_INFO = 0
+    LOG_SUCCESS = 1
+    LOG_WARNING = 2
+    LOG_ERROR = 3
+    
+    def __init__(self, parent=None):
+        """初始化輸出框架"""
+        super().__init__(parent)
         
-        # 創建文本框容器
-        text_container = ttk.Frame(self, borderwidth=1, relief="solid")
-        text_container.pack(fill=tk.BOTH, expand=True)
+        # 自動滾動標誌
+        self.auto_scroll = True
         
-        # 文本框
-        self.output_text = tk.Text(
-            text_container, 
-            height=10, 
-            width=80, 
-            wrap=tk.WORD,
-            font=('Consolas', 9),
-            bg='#fafafa',
-            fg='#333333',
-            padx=ThemeManager.PADDING['small'],
-            pady=ThemeManager.PADDING['small'],
-            borderwidth=0
-        )
-        self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    def setup_ui(self):
+        """設置 UI 元件"""
+        # 標題區域
+        title_layout = QHBoxLayout()
+        self.main_layout.addLayout(title_layout)
         
-        # 設置標籤顏色
-        self.output_text.tag_configure(
-            'info', 
-            foreground=ThemeManager.COLORS['primary'] if hasattr(ThemeManager, 'COLORS') else '#3498db'
-        )
-        self.output_text.tag_configure(
-            'success', 
-            foreground=ThemeManager.COLORS['success'] if hasattr(ThemeManager, 'COLORS') else '#27ae60'
-        )
-        self.output_text.tag_configure(
-            'warning', 
-            foreground=ThemeManager.COLORS['warning'] if hasattr(ThemeManager, 'COLORS') else '#f39c12'
-        )
-        self.output_text.tag_configure(
-            'error', 
-            foreground=ThemeManager.COLORS['error'] if hasattr(ThemeManager, 'COLORS') else '#c0392b'
-        )
-        self.output_text.tag_configure(
-            'bold', 
-            font=('Consolas', 9, 'bold')
-        )
-        
-        # 滾動條
-        scrollbar = ttk.Scrollbar(text_container, orient="vertical", command=self.output_text.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.output_text.configure(yscrollcommand=scrollbar.set)
-        
-        # 按鈕框架
-        button_frame = ttk.Frame(self)
-        button_frame.pack(fill=tk.X, pady=ThemeManager.PADDING['small'])
-        
-        # 清除按鈕
-        self.clear_button = ttk.Button(
-            button_frame, 
-            text="清除日誌", 
-            command=self.clear
-        )
-        self.clear_button.pack(side=tk.LEFT, padx=ThemeManager.PADDING['small'])
+        # 標題標籤
+        self.title_label = self.create_heading("下載日誌")
+        title_layout.addWidget(self.title_label)
         
         # 自動滾動選項
-        self.autoscroll_var = tk.BooleanVar(value=True)
-        self.autoscroll_check = ttk.Checkbutton(
-            button_frame, 
-            text="自動滾動", 
-            variable=self.autoscroll_var
-        )
-        self.autoscroll_check.pack(side=tk.RIGHT, padx=ThemeManager.PADDING['small'])
-    
-    def write(self, text: str):
-        """
-        寫入文本到輸出框
+        self.auto_scroll_check = QCheckBox("自動滾動", self)
+        self.auto_scroll_check.setChecked(True)
+        self.auto_scroll_check.stateChanged.connect(self._on_auto_scroll_changed)
+        title_layout.addWidget(self.auto_scroll_check)
         
-        Args:
-            text: 要寫入的文本
-        """
-        try:
-            # 處理 aria2c 的進度
-            if "[#" in text and "CN:" in text and "DL:" in text:
-                self._parse_aria2c_progress(text)
-            
-            # 處理 yt-dlp 的進度
-            elif "[download]" in text and "%" in text:
-                self._parse_ytdlp_progress(text)
-            
-            # 將文本添加到輸出框
-            self.output_text.insert(tk.END, text)
-            if self.autoscroll_var.get():
-                self.output_text.see(tk.END)
-            self.output_text.update()
-            
-        except Exception as e:
-            print(f"Write error: {str(e)}")
-            self.output_text.insert(tk.END, text)
-            if self.autoscroll_var.get():
-                self.output_text.see(tk.END)
-            self.output_text.update()
-    
-    def _parse_aria2c_progress(self, text: str):
-        """
-        解析 aria2c 的進度信息
+        # 清除按鈕
+        self.clear_button = QPushButton("清除日誌", self)
+        self.clear_button.clicked.connect(self._on_clear_clicked)
+        title_layout.addWidget(self.clear_button)
         
-        Args:
-            text: aria2c 輸出的文本
-        """
-        try:
-            progress_match = re.search(r'\((\d+)%\)', text)
-            speed_match = re.search(r'DL:(\d+\.?\d*)(\w+)', text)
-            
-            if progress_match and self.progress_callback:
-                percentage = float(progress_match.group(1))
-                
-                speed_val = 0
-                if speed_match:
-                    speed_val = float(speed_match.group(1))
-                    speed_unit = speed_match.group(2)
-                    
-                    # 轉換為 bytes/s
-                    if speed_unit == 'GiB':
-                        speed_val = speed_val * 1024 * 1024 * 1024
-                    elif speed_unit == 'MiB':
-                        speed_val = speed_val * 1024 * 1024
-                    elif speed_unit == 'KiB':
-                        speed_val = speed_val * 1024
-                    
-                self.progress_callback(percentage, speed_val)
-        except Exception as e:
-            print(f"Progress parsing error: {str(e)}")
-    
-    def _parse_ytdlp_progress(self, text: str):
-        """
-        解析 yt-dlp 的進度信息
+        # 輸出文本框
+        self.output_text = QPlainTextEdit(self)
+        self.output_text.setReadOnly(True)
+        self.output_text.setMinimumHeight(150)
+        self.output_text.setPlaceholderText("下載日誌將顯示在這裡...")
         
-        Args:
-            text: yt-dlp 輸出的文本
-        """
-        try:
-            # 解析進度信息
-            parts = text.split()
-            for part in parts:
-                if "%" in part and self.progress_callback:
-                    percentage = float(part.replace("%", ""))
-                    
-                    # 查找速度
-                    speed_val = 0
-                    if "at" in parts and parts.index(part) < len(parts) - 2:
-                        at_index = parts.index("at")
-                        if at_index + 1 < len(parts):
-                            speed = parts[at_index + 1]
-                            if speed.endswith("/s"):
-                                if speed.endswith("KiB/s"):
-                                    speed_val = float(speed[:-5]) * 1024
-                                elif speed.endswith("MiB/s"):
-                                    speed_val = float(speed[:-5]) * 1024 * 1024
-                                elif speed.endswith("GiB/s"):
-                                    speed_val = float(speed[:-5]) * 1024 * 1024 * 1024
-                                else:
-                                    speed_val = float(speed[:-2])
-                    
-                    self.progress_callback(percentage, speed_val)
-                    break
-        except Exception as e:
-            print(f"Progress parsing error: {str(e)}")
+        # 設置文本框樣式
+        self.output_text.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: {ThemeManager.CARD_COLOR};
+                border: 1px solid {ThemeManager.BORDER_COLOR};
+                border-radius: {ThemeManager.BORDER_RADIUS}px;
+                padding: {ThemeManager.PADDING_NORMAL}px;
+                font-family: "Consolas", "Courier New", monospace;
+                font-size: {ThemeManager.FONT_SIZE_NORMAL}pt;
+            }}
+        """)
+        
+        self.main_layout.addWidget(self.output_text)
+    
+    def add_log(self, message, log_type=LOG_INFO):
+        """添加日誌"""
+        if not message:
+            return
+        
+        # 獲取文本顏色
+        color = self._get_color_for_log_type(log_type)
+        
+        # 創建文本格式
+        text_format = QTextCharFormat()
+        text_format.setForeground(QColor(color))
+        
+        # 添加文本
+        cursor = self.output_text.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        
+        # 如果不是第一行，先添加換行
+        if not self.output_text.toPlainText() == "":
+            cursor.insertText("\n")
+        
+        # 設置文本格式
+        cursor.setCharFormat(text_format)
+        
+        # 插入文本
+        cursor.insertText(message)
+        
+        # 自動滾動
+        if self.auto_scroll:
+            self.output_text.setTextCursor(cursor)
+            self.output_text.ensureCursorVisible()
+        
+        # 發出日誌添加信號
+        self.log_added.emit(message)
+    
+    def add_info(self, message):
+        """添加資訊日誌"""
+        self.add_log(message, self.LOG_INFO)
+    
+    def add_success(self, message):
+        """添加成功日誌"""
+        self.add_log(message, self.LOG_SUCCESS)
+    
+    def add_warning(self, message):
+        """添加警告日誌"""
+        self.add_log(message, self.LOG_WARNING)
+    
+    def add_error(self, message):
+        """添加錯誤日誌"""
+        self.add_log(message, self.LOG_ERROR)
     
     def clear(self):
-        """清除輸出文本"""
-        self.output_text.delete(1.0, tk.END)
+        """清除日誌"""
+        self.output_text.clear()
     
-    def flush(self):
-        """實現 file-like 對象的 flush 方法"""
-        pass
+    def get_text(self):
+        """獲取日誌文本"""
+        return self.output_text.toPlainText()
+    
+    def _on_auto_scroll_changed(self, state):
+        """自動滾動選項變更時的處理"""
+        self.auto_scroll = state == Qt.Checked
+    
+    def _on_clear_clicked(self):
+        """清除按鈕點擊時的處理"""
+        self.clear()
+    
+    def _get_color_for_log_type(self, log_type):
+        """根據日誌類型獲取顏色"""
+        if log_type == self.LOG_SUCCESS:
+            return ThemeManager.SUCCESS_COLOR
+        elif log_type == self.LOG_WARNING:
+            return ThemeManager.WARNING_COLOR
+        elif log_type == self.LOG_ERROR:
+            return ThemeManager.ERROR_COLOR
+        else:
+            return ThemeManager.TEXT_PRIMARY
