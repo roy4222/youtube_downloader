@@ -9,6 +9,25 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional, Dict, Any
 
+try:
+    from ui.theme import ThemeManager
+except ImportError:
+    # 如果主題管理器不可用，使用空的類別
+    class ThemeManager:
+        PADDING = {'small': 5, 'medium': 10, 'large': 15}
+        COLORS = {
+            'primary': '#3498db',
+            'secondary': '#2ecc71',
+            'accent': '#e74c3c',
+            'success': '#27ae60',
+            'warning': '#f39c12',
+            'error': '#c0392b'
+        }
+        
+        @classmethod
+        def apply_modern_widget_style(cls, widget):
+            pass
+
 
 class OutputFrame(ttk.Frame):
     """輸出文本框架元件"""
@@ -22,6 +41,9 @@ class OutputFrame(ttk.Frame):
             progress_callback: 進度更新回調函數
             **kwargs: 傳遞給 Frame 的參數
         """
+        # 設置默認樣式
+        kwargs.setdefault('padding', ThemeManager.PADDING['medium'])
+        
         super().__init__(parent, **kwargs)
         self.parent = parent
         self.progress_callback = progress_callback
@@ -29,26 +51,82 @@ class OutputFrame(ttk.Frame):
     
     def create_widgets(self):
         """創建輸出文本框架內的元件"""
+        # 創建標題標籤
+        title_label = ttk.Label(
+            self, 
+            text="下載日誌", 
+            font=('Microsoft JhengHei UI', 11, 'bold'),
+            foreground=ThemeManager.COLORS['primary'] if hasattr(ThemeManager, 'COLORS') else '#3498db'
+        )
+        title_label.pack(side=tk.TOP, anchor=tk.W, padx=ThemeManager.PADDING['small'], 
+                        pady=(0, ThemeManager.PADDING['small']))
+        
+        # 創建文本框容器
+        text_container = ttk.Frame(self, borderwidth=1, relief="solid")
+        text_container.pack(fill=tk.BOTH, expand=True)
+        
         # 文本框
-        self.output_text = tk.Text(self, height=10, width=80, wrap=tk.WORD)
-        self.output_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.output_text = tk.Text(
+            text_container, 
+            height=10, 
+            width=80, 
+            wrap=tk.WORD,
+            font=('Consolas', 9),
+            bg='#fafafa',
+            fg='#333333',
+            padx=ThemeManager.PADDING['small'],
+            pady=ThemeManager.PADDING['small'],
+            borderwidth=0
+        )
+        self.output_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 設置標籤顏色
+        self.output_text.tag_configure(
+            'info', 
+            foreground=ThemeManager.COLORS['primary'] if hasattr(ThemeManager, 'COLORS') else '#3498db'
+        )
+        self.output_text.tag_configure(
+            'success', 
+            foreground=ThemeManager.COLORS['success'] if hasattr(ThemeManager, 'COLORS') else '#27ae60'
+        )
+        self.output_text.tag_configure(
+            'warning', 
+            foreground=ThemeManager.COLORS['warning'] if hasattr(ThemeManager, 'COLORS') else '#f39c12'
+        )
+        self.output_text.tag_configure(
+            'error', 
+            foreground=ThemeManager.COLORS['error'] if hasattr(ThemeManager, 'COLORS') else '#c0392b'
+        )
+        self.output_text.tag_configure(
+            'bold', 
+            font=('Consolas', 9, 'bold')
+        )
         
         # 滾動條
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.output_text.yview)
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        scrollbar = ttk.Scrollbar(text_container, orient="vertical", command=self.output_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.output_text.configure(yscrollcommand=scrollbar.set)
         
         # 按鈕框架
         button_frame = ttk.Frame(self)
-        button_frame.grid(row=1, column=0, columnspan=2, pady=(5, 0))
+        button_frame.pack(fill=tk.X, pady=ThemeManager.PADDING['small'])
         
         # 清除按鈕
-        self.clear_button = ttk.Button(button_frame, text="清除日誌", command=self.clear)
-        self.clear_button.pack(side=tk.LEFT, padx=5)
+        self.clear_button = ttk.Button(
+            button_frame, 
+            text="清除日誌", 
+            command=self.clear
+        )
+        self.clear_button.pack(side=tk.LEFT, padx=ThemeManager.PADDING['small'])
         
-        # 配置 grid 權重
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
+        # 自動滾動選項
+        self.autoscroll_var = tk.BooleanVar(value=True)
+        self.autoscroll_check = ttk.Checkbutton(
+            button_frame, 
+            text="自動滾動", 
+            variable=self.autoscroll_var
+        )
+        self.autoscroll_check.pack(side=tk.RIGHT, padx=ThemeManager.PADDING['small'])
     
     def write(self, text: str):
         """
@@ -68,13 +146,15 @@ class OutputFrame(ttk.Frame):
             
             # 將文本添加到輸出框
             self.output_text.insert(tk.END, text)
-            self.output_text.see(tk.END)
+            if self.autoscroll_var.get():
+                self.output_text.see(tk.END)
             self.output_text.update()
             
         except Exception as e:
             print(f"Write error: {str(e)}")
             self.output_text.insert(tk.END, text)
-            self.output_text.see(tk.END)
+            if self.autoscroll_var.get():
+                self.output_text.see(tk.END)
             self.output_text.update()
     
     def _parse_aria2c_progress(self, text: str):

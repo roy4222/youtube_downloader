@@ -6,18 +6,31 @@
 
 import tkinter as tk
 from ui.main_window import MainWindow
+from ui.theme import ThemeManager
 
 def main():
     """主程式入口點"""
     # 創建根視窗
     root = tk.Tk()
+    root.title("影片下載器")
     
-    # 設置主題 (如果支援)
+    # 設置應用程式圖示
     try:
-        root.tk.call("source", "azure.tcl")
-        root.tk.call("set_theme", "light")
+        root.iconbitmap("youtube.ico")
     except:
         pass
+    
+    # 設置主題
+    ThemeManager.setup_theme(root)
+    
+    # 設置視窗大小和位置
+    window_width = 800
+    window_height = 600
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+    root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
     # 創建主視窗
     app = MainWindow(root)

@@ -9,6 +9,25 @@ from tkinter import ttk
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any, Dict
 
+try:
+    from ui.theme import ThemeManager
+except ImportError:
+    # 如果主題管理器不可用，使用空的類別
+    class ThemeManager:
+        PADDING = {'small': 5, 'medium': 10, 'large': 15}
+        
+        @classmethod
+        def get_button_style(cls, button_type='default'):
+            return 'TButton'
+        
+        @classmethod
+        def get_label_style(cls, label_type='default'):
+            return 'TLabel'
+        
+        @classmethod
+        def apply_modern_widget_style(cls, widget):
+            pass
+
 
 class BaseFrame(ttk.Frame):
     """UI 元件的基礎框架類別"""
@@ -21,6 +40,10 @@ class BaseFrame(ttk.Frame):
             parent: 父容器
             **kwargs: 傳遞給 ttk.Frame 的參數
         """
+        # 設置默認樣式
+        kwargs.setdefault('padding', ThemeManager.PADDING['medium'])
+        kwargs.setdefault('style', 'TFrame')
+        
         super().__init__(parent, **kwargs)
         self.parent = parent
         self.create_widgets()
@@ -33,6 +56,38 @@ class BaseFrame(ttk.Frame):
     def update_ui(self):
         """更新 UI 狀態，可由子類覆寫"""
         pass
+    
+    def create_label(self, parent, text, style='default', **kwargs):
+        """創建帶有主題樣式的標籤"""
+        label = ttk.Label(
+            parent, 
+            text=text, 
+            style=ThemeManager.get_label_style(style),
+            **kwargs
+        )
+        return label
+    
+    def create_button(self, parent, text, command=None, style='default', **kwargs):
+        """創建帶有主題樣式的按鈕"""
+        button = ttk.Button(
+            parent, 
+            text=text, 
+            command=command, 
+            style=ThemeManager.get_button_style(style),
+            **kwargs
+        )
+        return button
+    
+    def create_entry(self, parent, **kwargs):
+        """創建帶有主題樣式的輸入框"""
+        entry = ttk.Entry(parent, **kwargs)
+        return entry
+    
+    def create_text(self, parent, **kwargs):
+        """創建帶有主題樣式的文本框"""
+        text = tk.Text(parent, **kwargs)
+        ThemeManager.apply_modern_widget_style(text)
+        return text
 
 
 class BaseDialog(tk.Toplevel):
@@ -56,8 +111,11 @@ class BaseDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         
+        # 設置對話框樣式
+        self.configure(background=ThemeManager.COLORS['background'] if hasattr(ThemeManager, 'COLORS') else '#f5f5f5')
+        
         # 創建主框架
-        self.main_frame = ttk.Frame(self, padding="10")
+        self.main_frame = ttk.Frame(self, padding=ThemeManager.PADDING['medium'])
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         
         # 創建元件
@@ -83,13 +141,23 @@ class BaseDialog(tk.Toplevel):
     def create_buttons(self):
         """創建確定和取消按鈕"""
         button_frame = ttk.Frame(self.main_frame)
-        button_frame.pack(fill=tk.X, pady=(10, 0))
+        button_frame.pack(fill=tk.X, pady=(ThemeManager.PADDING['medium'], 0))
         
-        cancel_button = ttk.Button(button_frame, text="取消", command=self.cancel)
-        cancel_button.pack(side=tk.RIGHT, padx=5)
+        cancel_button = ttk.Button(
+            button_frame, 
+            text="取消", 
+            command=self.cancel,
+            style=ThemeManager.get_button_style()
+        )
+        cancel_button.pack(side=tk.RIGHT, padx=ThemeManager.PADDING['small'])
         
-        ok_button = ttk.Button(button_frame, text="確定", command=self.ok)
-        ok_button.pack(side=tk.RIGHT, padx=5)
+        ok_button = ttk.Button(
+            button_frame, 
+            text="確定", 
+            command=self.ok,
+            style=ThemeManager.get_button_style('primary')
+        )
+        ok_button.pack(side=tk.RIGHT, padx=ThemeManager.PADDING['small'])
         
         # 綁定回車鍵到確定按鈕
         self.bind("<Return>", lambda e: ok_button.invoke())
@@ -123,3 +191,24 @@ class BaseDialog(tk.Toplevel):
         """等待對話框結果"""
         self.wait_window()
         return self.result
+    
+    def create_label(self, parent, text, style='default', **kwargs):
+        """創建帶有主題樣式的標籤"""
+        label = ttk.Label(
+            parent, 
+            text=text, 
+            style=ThemeManager.get_label_style(style),
+            **kwargs
+        )
+        return label
+    
+    def create_button(self, parent, text, command=None, style='default', **kwargs):
+        """創建帶有主題樣式的按鈕"""
+        button = ttk.Button(
+            parent, 
+            text=text, 
+            command=command, 
+            style=ThemeManager.get_button_style(style),
+            **kwargs
+        )
+        return button

@@ -9,6 +9,13 @@ from tkinter import ttk, messagebox
 from typing import Callable, Optional
 
 from core.url_utils import clean_url, detect_platform
+try:
+    from ui.theme import ThemeManager
+except ImportError:
+    # 如果主題管理器不可用，使用空的類別
+    class ThemeManager:
+        PADDING = {'small': 5, 'medium': 10, 'large': 15}
+        COLORS = {'primary': '#3498db', 'secondary': '#2ecc71', 'accent': '#e74c3c'}
 
 
 class UrlInputFrame(ttk.LabelFrame):
@@ -23,7 +30,10 @@ class UrlInputFrame(ttk.LabelFrame):
             on_url_change: URL 變更時的回調函數
             **kwargs: 傳遞給 LabelFrame 的參數
         """
-        super().__init__(parent, text="影片網址 (支援 YouTube 和 Bilibili)", padding="5", **kwargs)
+        # 設置默認樣式
+        kwargs.setdefault('padding', ThemeManager.PADDING['medium'])
+        
+        super().__init__(parent, text="影片網址 (支援 YouTube 和 Bilibili)", **kwargs)
         self.parent = parent
         self.on_url_change = on_url_change
         self.url_var = tk.StringVar()
@@ -32,25 +42,64 @@ class UrlInputFrame(ttk.LabelFrame):
     
     def create_widgets(self):
         """創建 URL 輸入框架內的元件"""
+        # 創建主容器框架
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=ThemeManager.PADDING['small'], 
+                        pady=ThemeManager.PADDING['small'])
+        
         # URL 輸入框
-        self.url_entry = ttk.Entry(self, textvariable=self.url_var, width=70)
-        self.url_entry.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5, pady=5)
+        self.url_entry = ttk.Entry(main_frame, textvariable=self.url_var, width=70)
+        self.url_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, 
+                           padx=ThemeManager.PADDING['small'])
+        
+        # 按鈕框架
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(side=tk.RIGHT, padx=ThemeManager.PADDING['small'])
         
         # 貼上按鈕
-        self.paste_button = ttk.Button(self, text="貼上", command=self.paste_url)
-        self.paste_button.grid(row=0, column=1, padx=5)
+        self.paste_button = ttk.Button(
+            button_frame, 
+            text="貼上", 
+            command=self.paste_url,
+            style=ThemeManager.get_button_style('primary')
+        )
+        self.paste_button.pack(side=tk.LEFT, padx=ThemeManager.PADDING['small'])
         
         # 清除按鈕
-        self.clear_button = ttk.Button(self, text="清除", command=self.clear_url)
-        self.clear_button.grid(row=0, column=2, padx=5)
+        self.clear_button = ttk.Button(
+            button_frame, 
+            text="清除", 
+            command=self.clear_url
+        )
+        self.clear_button.pack(side=tk.LEFT, padx=ThemeManager.PADDING['small'])
         
-        # 配置 grid 權重
-        self.columnconfigure(0, weight=1)
+        # 平台標籤
+        self.platform_var = tk.StringVar()
+        self.platform_label = ttk.Label(
+            self, 
+            textvariable=self.platform_var,
+            foreground=ThemeManager.COLORS['primary'] if hasattr(ThemeManager, 'COLORS') else '#3498db',
+            font=('Microsoft JhengHei UI', 9, 'italic')
+        )
+        self.platform_label.pack(side=tk.LEFT, padx=ThemeManager.PADDING['medium'], 
+                                pady=(0, ThemeManager.PADDING['small']))
     
     def _on_url_changed(self, *args):
         """URL 變更時的回調函數"""
+        url = self.url_var.get().strip()
+        
+        # 更新平台標籤
+        if url:
+            platform = detect_platform(url)
+            if platform != "unknown":
+                self.platform_var.set(f"平台: {platform.capitalize()}")
+            else:
+                self.platform_var.set("未知平台")
+        else:
+            self.platform_var.set("")
+        
         if self.on_url_change:
-            self.on_url_change(self.url_var.get())
+            self.on_url_change(url)
     
     def paste_url(self):
         """從剪貼簿貼上 URL"""
