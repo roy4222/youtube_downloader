@@ -42,6 +42,67 @@ pip install -e .
 ytdl --check
 ```
 
+## 程式架構與組件化
+
+本專案採用模組化設計，未來將持續優化以下組件：
+
+### 現有架構
+
+```
+youtube_downloader/
+├── youtube_downloader.py  # 主程式
+├── requirements.txt       # 依賴項
+└── README.md              # 說明文件
+```
+
+### 未來組件化計劃
+
+1. **URL 處理模組**
+   - 將 URL 清理和處理邏輯移至單獨模組
+   - 支援更多影片平台的 URL 格式
+
+2. **下載引擎抽象化**
+   - 建立抽象下載引擎基類
+   - 實現平台特定下載器 (YouTube, Bilibili 等)
+   - 使用工廠模式自動選擇適合的下載器
+
+3. **UI 元件分離**
+   - 將 GUI 相關代碼拆分為多個專注的類別
+   - 提高介面的可維護性和擴展性
+
+4. **設定管理模組**
+   - 保存/載入使用者偏好設定
+   - 記住上次的下載位置和格式選擇
+
+5. **多語言支援**
+   - 提取文字字串到語言檔案
+   - 實現多語言切換功能
+
+6. **下載任務管理**
+   - 支援多任務並行下載
+   - 實現暫停、繼續、取消等操作
+
+### 預計架構
+
+```
+youtube_downloader/
+├── core/
+│   ├── url_utils.py        # URL 處理工具
+│   ├── download_engine.py  # 下載引擎抽象類
+│   ├── youtube_engine.py   # YouTube 下載引擎
+│   └── bilibili_engine.py  # Bilibili 下載引擎
+├── ui/
+│   ├── main_window.py      # 主視窗
+│   ├── url_panel.py        # URL 輸入面板
+│   └── progress_panel.py   # 進度顯示面板
+├── utils/
+│   ├── config_manager.py   # 設定管理
+│   └── language_manager.py # 語言管理
+├── main.py                 # 程式入口
+├── requirements.txt        # 依賴項
+└── README.md               # 說明文件
+```
+
 ## 使用方法
 
 ### 命令行使用
