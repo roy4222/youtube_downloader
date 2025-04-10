@@ -14,9 +14,10 @@ from ui.theme import ThemeManager
 
 def main():
     """主程式入口點"""
-    # 設置高 DPI 支援
-    QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QCoreApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    # 設置高 DPI 支援 (使用新的非棄用 API)
+    # 在 Qt 6 中，高 DPI 縮放默認已啟用，不需要顯式設置
+    # QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    # QCoreApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
     # 創建應用程式
     app = QApplication(sys.argv)

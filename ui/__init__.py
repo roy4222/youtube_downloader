@@ -16,3 +16,4 @@ from .format_frame import FormatSelectionFrame
 from .progress_frame import ProgressFrame
 from .output_frame import OutputFrame
 from .quality_dialog import QualityDialog
+from .preview_frame import PreviewFrame
