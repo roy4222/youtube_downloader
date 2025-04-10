@@ -87,11 +87,12 @@ youtube_downloader/
    - 創建了下載引擎工廠類 `DownloadEngineFactory`，自動選擇適合的下載器
    - 實現了下載管理器 `DownloadManager`，提供統一的下載介面
 
-3. **UI 元件分離**
-   - 將大型 GUI 類拆分為多個專注的元件
-   - 實現了基礎 UI 元件類別 `BaseFrame` 和 `BaseDialog`
-   - 創建了專注的 UI 元件：URL 輸入、下載位置選擇、格式選擇、進度顯示等
-   - 整合所有元件到主視窗 `MainWindow`
+3. **UI 元件分離 (已遷移至 PySide6)**
+   - 將大型 GUI 類拆分為多個專注的元件 (Qt 版本)
+   - 實現了基礎 UI 元件類別 `BaseFrame` 和 `BaseDialog` (Qt 版本)
+   - 創建了專注的 Qt UI 元件：URL 輸入、下載位置選擇、格式選擇、進度顯示、輸出日誌等
+   - 實現了 macOS 風格的主題和樣式 (ThemeManager)
+   - 整合所有元件到主視窗 `MainWindow` (Qt 版本)
 
 ### 待完成的組件化工作
 
